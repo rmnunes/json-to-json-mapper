@@ -4,9 +4,8 @@
   "description": "Map Json to Json, using enum to cast object when converting id to string",
   "type": "commonjs",
   "scripts": {
-    "ts-gen": "ts-node ./src/generate.ts",
-    "makelib": "tsc -p ./src/generated",
-    "setup": "npm install",
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
     "test": "mocha -r ts-node/register ./tests/**/*.spec.ts"
   },
   "repository": {
