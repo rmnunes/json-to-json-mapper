@@ -1,3 +1,4 @@
+[![Node.js Package](https://github.com/rmnunes/json-to-json-mapper/actions/workflows/npm-publish.yml/badge.svg)](https://github.com/rmnunes/json-to-json-mapper/actions/workflows/npm-publish.yml)
 # JSON Auto-mapper
 
 ## How to use?
