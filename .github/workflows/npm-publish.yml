@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 16
           registry-url: https://registry.npmjs.org/
-      - working-directory: ./dist
       - run: npm publish
+        working-directory: ./dist
         env:
           NODE_AUTH_TOKEN: ${{secrets.npm_token}}
