@@ -1,6 +1,6 @@
 {
   "name": "json-to-json-mapper",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Map Json to Json, using enum to cast object when converting id to string",
   "type": "commonjs",
   "scripts": {
@@ -16,7 +16,7 @@
   "license": "MIT",
   "main": "dist/index.js",
   "files": [
-    "dist/**"
+    "dist"
   ],
   "devDependencies": {
     "@types/chai": "^4.3.1",
