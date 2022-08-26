@@ -234,6 +234,6 @@ export function map(obj, mappings, saveToFile, initial) {
       });
     }
   }
-  const errors = JSON.stringify(globalErrors);
+  const errors = globalErrors;
   return { result, skipped, errors };
 }

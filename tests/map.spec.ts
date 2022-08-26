@@ -84,7 +84,7 @@ describe("Map", () => {
       { source: "id" },
     ];
     const { skipped } = map(input, mappings, false, {});
-    expect(JSON.stringify(expected)).to.be.equals(skipped);
+    expect(JSON.stringify(expected)).to.be.equals(JSON.stringify(skipped));
   });
 
   it("test errors response", () => {
@@ -109,7 +109,7 @@ describe("Map", () => {
 
     const expected = [];
     const { errors } = map(input, mappings, false, {});
-    expect(JSON.stringify(expected)).to.be.equals(errors);
+    expect(JSON.stringify(expected)).to.be.equals(JSON.stringify(errors));
   });
 
   it("test enum mapping", () => {
@@ -169,6 +169,6 @@ describe("Map", () => {
       { ref: "id1", message: "Source Element: id1 not found." },
     ];
     const { errors } = map(input, mappings, false, {});
-    expect(JSON.stringify(expected)).to.be.equals(errors);
+    expect(JSON.stringify(expected)).to.be.equals(JSON.stringify(errors));
   });
 });
