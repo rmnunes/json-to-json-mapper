@@ -11,12 +11,37 @@ import { checkSkippedFieldsFromSource } from "./support";
       - generate unique Id for arrays
 */
 
+type Error = {
+  ref: String;
+  message: String;
+};
+
+let globalErrors: Error[] = [];
+
 function resolveEnum(e, value) {
   if (e[value] !== undefined) return e[value];
   else {
     console.warn(`Failed to find match to Enum of value: ${value}`);
+    globalErrors.push({
+      ref: value,
+      message: `Failed to find match to Enum of value: ${value}`,
+    });
     return String(value);
   }
+}
+
+function resolveCasting(e, value) {
+  var casted;
+  switch (e.name) {
+    case "Number":
+      casted = Number(value);
+      break;
+    case "String":
+      casted = String(value);
+    default:
+      value;
+  }
+  return casted;
 }
 
 function clearIndexCtl(ctl) {
@@ -45,7 +70,9 @@ export function assignValue(target, key, value, index, isArray) {
     }
   } else if (
     value === null ||
-    (value !== undefined && typeof value != "function" && typeof value != "symbol")
+    (value !== undefined &&
+      typeof value != "function" &&
+      typeof value != "symbol")
   ) {
     if (target[key] === undefined) Object.assign(target, { [key]: value });
     return target[key];
@@ -91,14 +118,19 @@ function buildJson(map, value, ctl) {
       target = assignTarget(target, parts[0], value, ctl);
       parts.shift();
     } else {
+      globalErrors.push({
+        ref: map,
+        message: `Map ${map} is empty or undefined`,
+      });
       throw `Map ${map} is empty or undefined`;
     }
   }
 }
 
 const indexCtl = { index: [], allowance: 0 };
-function interator(obj, srcMap, tgtMap, format) {
-  if (typeof srcMap == "string") return interator(obj, srcMap.split("."), tgtMap, format);
+function interator(obj, srcMap, tgtMap, format, casting) {
+  if (typeof srcMap == "string")
+    return interator(obj, srcMap.split("."), tgtMap, format, casting);
   else if (srcMap.length == 0) {
     let value;
     if (
@@ -112,6 +144,10 @@ function interator(obj, srcMap, tgtMap, format) {
       if (format) {
         value = resolveEnum(format, value);
       }
+
+      if (casting) {
+        value = resolveCasting(casting, value);
+      }
       //TODO: maybe implement a take: 1
       // an option in case is an array and we don't want all (I think this should go to business logic)
 
@@ -123,6 +159,10 @@ function interator(obj, srcMap, tgtMap, format) {
         index: [...indexCtl.index],
       });
     } else {
+      globalErrors.push({
+        ref: value,
+        message: `Value ${value} is not assignable.`,
+      });
       throw `Value ${value} is not assignable.`;
     }
   } else if (Array.isArray(obj)) {
@@ -130,7 +170,13 @@ function interator(obj, srcMap, tgtMap, format) {
       //TODO: create unique identifier ?
       indexCtl.index.push(item);
       if (typeof obj[item] == "object") {
-        interator(obj[item][srcMap[0]], srcMap.slice(1), tgtMap, format);
+        interator(
+          obj[item][srcMap[0]],
+          srcMap.slice(1),
+          tgtMap,
+          format,
+          casting
+        );
       } else {
         console.warn(`is there an else? iterator for?`);
       }
@@ -140,13 +186,17 @@ function interator(obj, srcMap, tgtMap, format) {
     if (obj[srcMap[0]] !== undefined) {
       if (indexCtl.index.find((x) => x !== -1)) {
         indexCtl.index.push(-1);
-        interator(obj[srcMap[0]], srcMap.slice(1), tgtMap, format);
+        interator(obj[srcMap[0]], srcMap.slice(1), tgtMap, format, casting);
         indexCtl.index.pop();
       } else {
-        interator(obj[srcMap[0]], srcMap.slice(1), tgtMap, format);
+        interator(obj[srcMap[0]], srcMap.slice(1), tgtMap, format, casting);
       }
     } else {
       console.warn(`Source Element: ${srcMap[0]} not found.`);
+      globalErrors.push({
+        ref: srcMap[0],
+        message: `Source Element: ${srcMap[0]} not found.`,
+      });
     }
   }
 }
@@ -158,13 +208,19 @@ export function map(obj, mappings, saveToFile, initial) {
 
   resulted = initial;
 
-  checkSkippedFieldsFromSource(obj, mappings);
+  const skipped = checkSkippedFieldsFromSource(obj, mappings);
 
   for (const map in mappings) {
     try {
       indexCtl.allowance = 0;
       indexCtl.index = [];
-      interator(obj, mappings[map].source, mappings[map].target, mappings[map].enum);
+      interator(
+        obj,
+        mappings[map].source,
+        mappings[map].target,
+        mappings[map].enum,
+        mappings[map].cast
+      );
       Object.assign(result, resulted);
       if (saveToFile) fs.writeFileSync("document.json", JSON.stringify(result));
     } catch (error) {
@@ -172,7 +228,12 @@ export function map(obj, mappings, saveToFile, initial) {
         `Mapping error: Source: ${mappings[map].source} Target: ${mappings[map].target}`
       );
       console.error(`Error message: ${error}`);
+      globalErrors.push({
+        ref: `Source: ${mappings[map].source} Target: ${mappings[map].target}`,
+        message: `Error message: ${error}`,
+      });
     }
   }
-  return result;
+  const errors = JSON.stringify(globalErrors);
+  return { result, skipped, errors };
 }

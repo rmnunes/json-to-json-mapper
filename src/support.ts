@@ -28,8 +28,7 @@ export function checkSkippedFieldsFromSource(obj, mappings) {
   for (var item in mappings) {
     elementList = elementList.filter((x) => x.source !== mappings[item].source);
   }
-  console.log(`Elements skipped from source file`);
-  console.log(JSON.stringify(elementList));
+  return JSON.stringify(elementList);
 }
 
 export function save(f) {
