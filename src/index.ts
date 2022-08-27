@@ -21,12 +21,7 @@ let globalErrors: Error[] = [];
 function resolveEnum(e, value) {
   if (e[value] !== undefined) return e[value];
   else {
-    console.warn(`Failed to find match to Enum of value: ${value}`);
-    globalErrors.push({
-      ref: value,
-      message: `Failed to find match to Enum of value: ${value}`,
-    });
-    return String(value);
+    throw `Failed to find match to Enum of value: ${value}`;
   }
 }
 
@@ -205,7 +200,7 @@ let resulted = {};
 
 export function map(obj, mappings, saveToFile, initial) {
   let result = {};
-
+  globalErrors = []
   resulted = initial;
 
   const skipped = checkSkippedFieldsFromSource(obj, mappings);

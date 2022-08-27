@@ -1,6 +1,6 @@
 {
   "name": "json-to-json-mapper",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Map Json to Json, using enum to cast object when converting id to string",
   "type": "commonjs",
   "scripts": {

@@ -145,6 +145,46 @@ describe("Map", () => {
     expect(JSON.stringify(expected)).to.be.equals(JSON.stringify(result));
   });
 
+  it("test enum error mapping", () => {
+    enum inputCode {
+      test = 2,
+    }
+
+    const input = {
+      request: {
+        order: {
+          id: 1,
+          code: 1,
+        },
+        details: "string",
+      },
+      id: 4,
+    };
+
+    const mappings = [
+      {
+        source: "request.order.id",
+        target: "app.ordering.number",
+      },
+      {
+        source: "request.order.code",
+        target: "app.ordering.text",
+        enum: inputCode,
+      },
+    ];
+
+    const expected = { app: { ordering: { number: 1 } } };
+    const expectedErrors = [
+      {
+        ref: "Source: request.order.code Target: app.ordering.text",
+        message: "Error message: Failed to find match to Enum of value: 1",
+      },
+    ];
+    const { result, errors } = map(input, mappings, false, {});
+    expect(JSON.stringify(expected)).to.be.equals(JSON.stringify(result));
+    expect(JSON.stringify(expectedErrors)).to.be.equals(JSON.stringify(errors));
+  });
+
   it("test errors element not found", () => {
     const input = {
       request: {
