@@ -1,5 +1,7 @@
 [![build](https://github.com/rmnunes/json-to-json-mapper/actions/workflows/node.js.yml/badge.svg)](https://github.com/rmnunes/json-to-json-mapper/actions/workflows/node.js.yml)
 [![npm](https://img.shields.io/npm/v/json-to-json-mapper.svg)](https://www.npmjs.com/package/json-to-json-mapper)
+[![downloads](https://img.shields.io/npm/dm/json-to-json-mapper.svg)](https://www.npmjs.com/package/json-to-json-mapper)
+[![zero deps](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](./package.json)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 # json-to-json-mapper
@@ -18,6 +20,22 @@ array handling, and per-mapping error reporting.
   `require`.
 
 Where this project is headed: see the [ROADMAP](./ROADMAP.md).
+
+## Why this instead of…
+
+| | json-to-json-mapper | object-mapper / morphism | JSONata / JMESPath |
+|---|---|---|---|
+| Maintained | ✅ | ❌ dormant | ✅ |
+| Mapping style | typed JS/JSON objects | JS objects | string expression language |
+| TypeScript-checked mappings | ✅ | partial / none | ❌ (opaque strings) |
+| Prototype-pollution safe by default | ✅ tested + fuzzed | ❌ (category has CVE history) | n/a |
+| Statically validatable before running | ✅ `validateMappings` + JSON Schema | ❌ | ❌ |
+| Mappings storable as pure JSON | ✅ (named registry) | partial | ✅ (but unvalidatable strings) |
+| Zero runtime dependencies | ✅ | ✅ | ✅ |
+| Learning curve | one function, one options object | low | a whole language |
+
+Every code snippet in this README is executed against the built package in
+CI (`scripts/check-readme.js`) — the docs cannot drift from the code.
 
 ## Install
 
@@ -256,6 +274,51 @@ map(input, mappings, {
   compactArrays: true,  // remove holes from arrays in the result
 });
 ```
+
+## Cookbook
+
+Five recipes that cover most real-world mappings — all executed in CI.
+Full runnable programs live in [`examples/`](./examples).
+
+```ts
+import { map } from "json-to-json-mapper";
+
+// 1. Rename a field
+map({ user_name: "ada" }, [{ source: "user_name", target: "userName" }]);
+// { userName: "ada" }
+
+// 2. Flatten nested structure
+map({ user: { address: { city: "Lisbon" } } }, [
+  { source: "user.address.city", target: "city" },
+]);
+// { city: "Lisbon" }
+
+// 3. Decode an enum / code into a label
+map({ status: 2 }, [
+  { source: "status", target: "status", lookup: { 1: "active", 2: "closed" } },
+]);
+// { status: "closed" }
+
+// 4. Reshape an array of objects
+map({ rows: [{ n: "1" }, { n: "2" }] }, [
+  { source: "rows.n", target: "items.$.value", cast: "number" },
+]);
+// { items: [{ value: 1 }, { value: 2 }] }
+
+// 5. Combine fields
+map({ street: "Main St 1", city: "Lisbon" }, [
+  {
+    sources: ["street", "city"],
+    target: "address",
+    transform: (parts) => parts.join(", "),
+  },
+]);
+// { address: "Main St 1, Lisbon" }
+```
+
+For **config-driven mapping** — definitions stored as JSON, validated before
+deploy, executed with a named registry — see
+[`examples/config-file/`](./examples/config-file).
 
 ## Migrating from v1
 

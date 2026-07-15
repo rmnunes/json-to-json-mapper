@@ -3,6 +3,27 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [2.5.0]
+
+Roadmap M4 — documentation & adoption.
+
+### Added
+
+- **Doc-tests**: every fenced `ts`/`js` block in the README is executed
+  against the built dist in CI and before publishing
+  (`scripts/check-readme.js`) — the README can no longer drift from the
+  code.
+- **README overhaul**: positioning table vs. alternatives, downloads and
+  zero-deps badges, and a five-recipe cookbook (rename, flatten,
+  enum-decode, array reshape, combine) — all executed in CI.
+- **`examples/`**: three runnable, CI-checked programs — API-response
+  reshaping, DB-row → DTO with lookups and `compile`, and config-driven
+  mapping loaded from JSON and validated with `validateMappings`
+  (`scripts/check-examples.js`).
+- **Docs site workflow** (`docs.yml`): typedoc API reference published to
+  GitHub Pages on release (requires a maintainer to enable Pages →
+  Source: GitHub Actions).
+
 ## [2.4.0]
 
 Roadmap M3 — performance & hardening.

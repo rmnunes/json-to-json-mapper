@@ -130,17 +130,17 @@ config file or database row, validatable in CI before deploy.
 
 ## M4 — Documentation & adoption (v2.5.0)
 
-- [ ] **README overhaul** — badges (npm version, downloads, CI, provenance),
+- [x] **README overhaul** — badges (npm version, downloads, CI, provenance),
   the positioning table from this roadmap, a 60-second quick start, and a
   cookbook section (rename, flatten, enum-decode, array reshape, config-file
   mapping) where every snippet is executed by a doc-test in CI.
-- [ ] **Doc-tests** — a test that extracts fenced `ts`/`js` blocks from
+- [x] **Doc-tests** — a test that extracts fenced `ts`/`js` blocks from
   README and runs them against the built dist. README can no longer lie
   (how this project originally went wrong).
-- [ ] **`examples/` directory** — three runnable real-world examples:
+- [x] **`examples/` directory** — three runnable real-world examples:
   API-response reshaping, DB-row → DTO with lookups, mapping definitions
   loaded from a JSON file and validated with `validateMappings`.
-- [ ] **GitHub Pages docs site** — generated from README + API reference
+- [x] **GitHub Pages docs site** — generated from README + API reference
   (typedoc as devDep), published by a `docs.yml` workflow on release.
 - [ ] **Repo metadata** — GitHub topics (`json`, `mapping`, `transform`,
   `zero-dependency`, `typescript`, `etl`), repo description, social preview.

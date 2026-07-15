@@ -1,6 +1,6 @@
 {
   "name": "json-to-json-mapper",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Remap JSON to JSON from a declarative list of source/target paths — with type casting, lookup tables, arrays, and zero runtime dependencies.",
   "type": "commonjs",
   "main": "./dist/cjs/index.js",
@@ -39,9 +39,12 @@
     "test": "node --test .test-build/tests/map.test.js .test-build/tests/paths.test.js .test-build/tests/security.test.js .test-build/tests/config.test.js .test-build/tests/property.test.js",
     "test:coverage": "pnpm run pretest && node --experimental-test-coverage --test .test-build/tests/map.test.js .test-build/tests/paths.test.js .test-build/tests/security.test.js .test-build/tests/config.test.js .test-build/tests/property.test.js",
     "check:dist": "node scripts/check-dist.js",
-    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm test && pnpm run check:dist",
+    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm test && pnpm run check:dist && pnpm run check:readme && pnpm run check:examples",
     "bench": "node bench/run.js",
-    "bench:check": "node bench/check.js"
+    "bench:check": "node bench/check.js",
+    "check:readme": "node scripts/check-readme.js",
+    "check:examples": "node scripts/check-examples.js",
+    "docs": "typedoc"
   },
   "keywords": [
     "json",
@@ -67,6 +70,7 @@
     "@types/node": "^20.14.0",
     "ajv": "^8.20.0",
     "fast-check": "^4.9.0",
+    "typedoc": "^0.28.20",
     "typescript": "^5.5.0"
   }
 }
