@@ -1,0 +1,6 @@
+[
+  { "source": "user.given_name", "target": "profile.firstName", "transform": "trim" },
+  { "source": "user.locale", "target": "profile.language", "lookup": "locales", "default": "en" },
+  { "source": "user.signup_ts", "target": "profile.signedUpOn", "transform": "toISODate" },
+  { "sources": ["user.city", "user.country"], "target": "profile.location", "transform": "joinComma" }
+]

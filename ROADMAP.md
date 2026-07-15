@@ -65,7 +65,7 @@ minutes and validate in CI.
 
 The gaps every real-world user hits in week one.
 
-- [ ] **Array-form paths** — `source` and `target` accept `string[]` as well
+- [x] **Array-form paths** — `source` and `target` accept `string[]` as well
   as the dotted string, so keys that *contain* dots are addressable.
   - `map({ "a.b": { c: 1 } }, [{ source: ["a.b", "c"], target: "out" }])`
     → `{ out: 1 }`.
@@ -73,19 +73,19 @@ The gaps every real-world user hits in week one.
     source; in target, `$` and numeric segments keep their meaning so the
     two forms stay equivalent otherwise.
   - Dotted-string form remains 100% backward compatible.
-- [ ] **Escaped dots in string paths** — `"a\\.b.c"` addresses key `a.b`.
+- [x] **Escaped dots in string paths** — `"a\\.b.c"` addresses key `a.b`.
   Escaping is sugar that parses to the array form; document that array form
   is the canonical representation.
-- [ ] **Multi-source mappings** — `sources: string[]` (mutually exclusive
+- [x] **Multi-source mappings** — `sources: string[]` (mutually exclusive
   with `source`) collects values positionally and requires `transform`.
   - `{ sources: ["first", "last"], target: "fullName", transform: (vals) => vals.join(" ") }`.
   - Missing individual sources yield `undefined` in the array; `strict`
     reports only if *all* sources are missing and no `default` exists.
-- [ ] **Conditional mappings** — optional `when(value, input): boolean`;
+- [x] **Conditional mappings** — optional `when(value, input): boolean`;
   a falsy return skips the mapping (not an error, even in strict mode).
-- [ ] **Target array indices** — numeric segments in target paths write to
+- [x] **Target array indices** — numeric segments in target paths write to
   explicit positions: `target: "coords.0"` / `"coords.1"`.
-- [ ] **Bench harness (baseline)** — `pnpm run bench` (plain `node`, no dep,
+- [x] **Bench harness (baseline)** — `pnpm run bench` (plain `node`, no dep,
   or `tinybench` as devDep) covering: 1 mapping × 100k objects, 50 mappings
   × 1k objects, array fan-out 10k elements. Prints ops/sec; commits a
   `bench/RESULTS.md` baseline. Not a CI gate yet — the baseline is the
@@ -96,51 +96,51 @@ The gaps every real-world user hits in week one.
 The differentiating milestone: mappings as data, not code — usable from a
 config file or database row, validatable in CI before deploy.
 
-- [ ] **Named transforms/casts registry** — `map(input, mappings, { registry })`
+- [x] **Named transforms/casts registry** — `map(input, mappings, { registry })`
   where mapping keys accept string references: `transform: "trim"`,
   `lookup: "countryCodes"`. Built-in registry ships `trim`, `upper`,
   `lower`, `toISODate`. Function values keep working (registry is additive).
-- [ ] **`validateMappings(mappings, opts?)`** — returns structured issues
+- [x] **`validateMappings(mappings, opts?)`** — returns structured issues
   (not throws): unknown mapping keys, `source`+`sources` conflicts, unsafe
   target segments, unknown registry references, malformed paths. Zero
   issues ⇒ the mapping definition is safe to persist.
-- [ ] **Stable error codes** — every `MappingError` gains a `code`
+- [x] **Stable error codes** — every `MappingError` gains a `code`
   (`SOURCE_MISSING`, `CAST_FAILED`, `LOOKUP_MISS`, `TARGET_CONFLICT`,
   `UNSAFE_TARGET`, `TRANSFORM_FAILED`, `INVALID_MAPPING`). Codes are public
   API: documented in README, covered by tests, never renamed within a major.
-- [ ] **JSON Schema for mapping definitions** — published at
+- [x] **JSON Schema for mapping definitions** — published at
   `schema/mapping.schema.json` and shipped in the npm package, so editors
   and CI can validate stored mapping files. Kept in sync by a test that
   validates every README example against the schema.
 
 ## M3 — Performance & hardening (v2.4.0)
 
-- [ ] **`compile(mappings, opts?)`** — returns a reusable
+- [x] **`compile(mappings, opts?)`** — returns a reusable
   `(input) => MapResult` with paths parsed once. `map()` becomes
   `compile()(input)` internally; benchmark target: ≥ 3× `map()` throughput
   on the 50-mappings × 1k-objects bench.
-- [ ] **Property-based tests** — `fast-check` as devDependency: round-trip
+- [x] **Property-based tests** — `fast-check` as devDependency: round-trip
   and no-throw invariants over arbitrary JSON, pollution attempts against
   arbitrary key names, `compactArrays` idempotence.
-- [ ] **Bench regression gate in CI** — bench job compares against
+- [x] **Bench regression gate in CI** — bench job compares against
   `bench/RESULTS.md` baseline; fails on >25% regression (generous to absorb
   runner noise).
-- [ ] **Fuzz the path parser** — arbitrary strings into source/target must
+- [x] **Fuzz the path parser** — arbitrary strings into source/target must
   never throw uncaught or write outside the result object.
 
 ## M4 — Documentation & adoption (v2.5.0)
 
-- [ ] **README overhaul** — badges (npm version, downloads, CI, provenance),
+- [x] **README overhaul** — badges (npm version, downloads, CI, provenance),
   the positioning table from this roadmap, a 60-second quick start, and a
   cookbook section (rename, flatten, enum-decode, array reshape, config-file
   mapping) where every snippet is executed by a doc-test in CI.
-- [ ] **Doc-tests** — a test that extracts fenced `ts`/`js` blocks from
+- [x] **Doc-tests** — a test that extracts fenced `ts`/`js` blocks from
   README and runs them against the built dist. README can no longer lie
   (how this project originally went wrong).
-- [ ] **`examples/` directory** — three runnable real-world examples:
+- [x] **`examples/` directory** — three runnable real-world examples:
   API-response reshaping, DB-row → DTO with lookups, mapping definitions
   loaded from a JSON file and validated with `validateMappings`.
-- [ ] **GitHub Pages docs site** — generated from README + API reference
+- [x] **GitHub Pages docs site** — generated from README + API reference
   (typedoc as devDep), published by a `docs.yml` workflow on release.
 - [ ] **Repo metadata** — GitHub topics (`json`, `mapping`, `transform`,
   `zero-dependency`, `typescript`, `etl`), repo description, social preview.

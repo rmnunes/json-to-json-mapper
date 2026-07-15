@@ -1,5 +1,7 @@
 [![build](https://github.com/rmnunes/json-to-json-mapper/actions/workflows/node.js.yml/badge.svg)](https://github.com/rmnunes/json-to-json-mapper/actions/workflows/node.js.yml)
 [![npm](https://img.shields.io/npm/v/json-to-json-mapper.svg)](https://www.npmjs.com/package/json-to-json-mapper)
+[![downloads](https://img.shields.io/npm/dm/json-to-json-mapper.svg)](https://www.npmjs.com/package/json-to-json-mapper)
+[![zero deps](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](./package.json)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 # json-to-json-mapper
@@ -18,6 +20,22 @@ array handling, and per-mapping error reporting.
   `require`.
 
 Where this project is headed: see the [ROADMAP](./ROADMAP.md).
+
+## Why this instead of…
+
+| | json-to-json-mapper | object-mapper / morphism | JSONata / JMESPath |
+|---|---|---|---|
+| Maintained | ✅ | ❌ dormant | ✅ |
+| Mapping style | typed JS/JSON objects | JS objects | string expression language |
+| TypeScript-checked mappings | ✅ | partial / none | ❌ (opaque strings) |
+| Prototype-pollution safe by default | ✅ tested + fuzzed | ❌ (category has CVE history) | n/a |
+| Statically validatable before running | ✅ `validateMappings` + JSON Schema | ❌ | ❌ |
+| Mappings storable as pure JSON | ✅ (named registry) | partial | ✅ (but unvalidatable strings) |
+| Zero runtime dependencies | ✅ | ✅ | ✅ |
+| Learning curve | one function, one options object | low | a whole language |
+
+Every code snippet in this README is executed against the built package in
+CI (`scripts/check-readme.js`) — the docs cannot drift from the code.
 
 ## Install
 
@@ -54,15 +72,62 @@ not an array.)
 
 | Field       | Type                                   | Description                                                                 |
 | ----------- | -------------------------------------- | --------------------------------------------------------------------------- |
-| `source`    | `string` (required)                    | Dot-path into the input, e.g. `request.order.id`. Arrays are traversed.     |
-| `target`    | `string` (required)                    | Dot-path into the output. Use `$` to denote an array level.                 |
+| `source`    | `string \| string[]`                   | Path into the input, e.g. `request.order.id`. Arrays are traversed. Exactly one of `source`/`sources`. |
+| `sources`   | `(string \| string[])[]`               | Multiple input paths, collected positionally into an array for `transform` (required with `sources`). |
+| `target`    | `string \| string[]` (required)        | Path into the output. `$` denotes an array level; numeric segments write explicit positions. |
 | `cast`      | `"string" \| "number" \| "boolean"`    | Coerce the value's type. The `String`/`Number`/`Boolean` constructors work too. |
-| `lookup`    | `Record<string \| number, unknown>`    | Substitute the value via a table or a TypeScript `enum`.                    |
-| `transform` | `(value: unknown) => unknown`          | Arbitrary transform, applied last.                                          |
-| `default`   | `unknown`                              | Value to use when the source resolves to nothing.                           |
+| `lookup`    | `Record<string \| number, unknown>`    | Substitute the value via a table or a TypeScript `enum`. Not supported with `sources`. |
+| `transform` | `(value) => unknown`                   | Arbitrary transform, applied last. With `sources` it receives the values array. |
+| `default`   | `unknown`                              | Value to use when the source(s) resolve to nothing.                         |
 | `first`     | `boolean`                              | Keep only the first matched value (for a scalar target fed by an array).    |
+| `when`      | `(value, input) => boolean`            | Apply the mapping only when truthy. Called per matched value (raw, pre-transform); with `sources`, once with the values array. A falsy return skips silently, even in `strict` mode. |
 
-Order of application per value: **lookup → cast → transform**.
+Order of application per value: **lookup → cast → transform** (with `sources`:
+**transform → cast**).
+
+### Paths
+
+Paths are dot-notation strings — or arrays of raw segments when a key itself
+contains a dot. `\.` escapes a literal dot in string form:
+
+```ts
+map({ "a.b": { c: 1 } }, [{ source: ["a.b", "c"], target: "out" }]);
+// { out: 1 }
+map({ "a.b": { c: 1 } }, [{ source: "a\\.b.c", target: "out" }]);
+// { out: 1 } — same thing, escaped string form
+```
+
+The array form is the canonical representation; strings are sugar. Malformed
+paths (empty segments, empty paths) are reported in `errors`, never thrown.
+
+### Combining several fields (`sources`)
+
+```ts
+map({ first: "Ada", last: "Lovelace" }, [
+  {
+    sources: ["first", "last"],
+    target: "fullName",
+    transform: ([first, last]) => `${first} ${last}`,
+  },
+]);
+// { fullName: "Ada Lovelace" }
+```
+
+Each source contributes its first matched value (`undefined` when absent).
+`strict` reports an error only when *all* sources are missing and there is no
+`default`.
+
+### Conditional mappings (`when`)
+
+```ts
+map({ amount: 0 }, [
+  { source: "amount", target: "billed", when: (value) => Boolean(value) },
+]);
+// {} — skipped silently; never an error
+```
+
+Over an array fan-out, `when` filters per element — combine with
+`compactArrays` for a dense result.
 
 ### Casting
 
@@ -105,22 +170,100 @@ empty slot (serialized as `null`) — pass `{ compactArrays: true }` to get dens
 arrays instead. To fold an array source into a single scalar target, use
 `first: true`.
 
-A **numeric segment** picks one array element deliberately:
+A **numeric segment** in a source picks one array element deliberately; in a
+target it writes an explicit array position:
 
 ```ts
 map({ order: [{ id: "a" }, { id: "b" }] }, [
   { source: "order.1.id", target: "picked" },
 ]);
 // { picked: "b" }
+
+map({ lon: 4.9, lat: 52.4 }, [
+  { source: "lon", target: "coords.0" },
+  { source: "lat", target: "coords.1" },
+]);
+// { coords: [4.9, 52.4] }
 ```
+
+Caveat: a numeric target segment creates an *array* container. If you need a
+literal numeric object key (e.g. a year), write into a pre-existing object via
+`into` — numeric segments fall back to plain keys on existing objects.
+
+### Serializable mappings: the registry
+
+Reference transforms and lookup tables **by name** and your mapping
+definitions become pure JSON — storable in a config file or database row:
+
+```ts
+map(
+  { name: "  ada  ", country: "NL" },
+  [
+    { source: "name", target: "name", transform: "trim" },
+    { source: "country", target: "country", lookup: "countries" },
+  ],
+  { registry: { lookups: { countries: { NL: "Netherlands" } } } }
+);
+// { name: "ada", country: "Netherlands" }
+```
+
+Built-in transforms (always available): `trim`, `upper`, `lower`,
+`toISODate`. A registry adds to — and can shadow — the built-ins. Function
+values keep working; the registry is additive.
+
+### Validating stored mappings
+
+```ts
+import { validateMappings } from "json-to-json-mapper";
+
+const issues = validateMappings(mappingsFromConfig, { registry });
+// [] means safe to persist/deploy; otherwise:
+// [{ index: 2, code: "UNSAFE_TARGET", field: "target", message: "..." }]
+```
+
+`validateMappings` catches everything static: unknown keys (typos),
+`source`/`sources` conflicts, malformed paths, unsafe target segments,
+unknown registry references, and bad casts — before the mapping ever runs.
+A JSON Schema for stored definitions ships at `schema/mapping.schema.json`
+for editor autocomplete and CI validation.
 
 ### `skipped` and `errors`
 
 - `skipped` lists input leaf paths (in dot notation) that no mapping consumed —
   handy for spotting fields you forgot to map.
-- `errors` is an array of `{ source, target, message }` describing every mapping
-  that could not be fully applied (bad cast, lookup miss, unsafe target key,
-  malformed mapping).
+- `errors` is an array of `{ code, source, target, message }` describing every
+  mapping that could not be fully applied. Codes are stable public API:
+
+| Code | Meaning |
+|---|---|
+| `SOURCE_MISSING` | `strict` mode: source(s) resolved to nothing and no `default` |
+| `CAST_FAILED` | Value could not be coerced (e.g. `"abc"` → number) |
+| `LOOKUP_MISS` | No matching key in the lookup table |
+| `TARGET_CONFLICT` | Multiple values for a scalar target, or `$` shape mismatch |
+| `UNSAFE_TARGET` | Target path hit the prototype-pollution guard |
+| `TRANSFORM_FAILED` | A `transform`/`when` function threw |
+| `INVALID_MAPPING` | Malformed mapping definition (bad paths, missing fields, unknown references) |
+
+### Reusing mappings: `compile`
+
+When the same mappings run against many inputs, compile them once — paths
+are parsed and registry references resolved a single time, which is ~3×
+faster than repeated `map()` calls on mapping-heavy workloads:
+
+```ts
+import { compile } from "json-to-json-mapper";
+
+const toOrder = compile(
+  [{ source: "id", target: "order.id", cast: "number" }],
+  { strict: true } // compile-time options: strict, compactArrays, registry
+);
+
+for (const row of rows) {
+  const { result, errors } = toOrder(row); // per-call: toOrder(row, { into })
+}
+```
+
+`map(input, mappings, options)` is exactly `compile(mappings, options)(input)`.
 
 ### Map-level options
 
@@ -131,6 +274,51 @@ map(input, mappings, {
   compactArrays: true,  // remove holes from arrays in the result
 });
 ```
+
+## Cookbook
+
+Five recipes that cover most real-world mappings — all executed in CI.
+Full runnable programs live in [`examples/`](./examples).
+
+```ts
+import { map } from "json-to-json-mapper";
+
+// 1. Rename a field
+map({ user_name: "ada" }, [{ source: "user_name", target: "userName" }]);
+// { userName: "ada" }
+
+// 2. Flatten nested structure
+map({ user: { address: { city: "Lisbon" } } }, [
+  { source: "user.address.city", target: "city" },
+]);
+// { city: "Lisbon" }
+
+// 3. Decode an enum / code into a label
+map({ status: 2 }, [
+  { source: "status", target: "status", lookup: { 1: "active", 2: "closed" } },
+]);
+// { status: "closed" }
+
+// 4. Reshape an array of objects
+map({ rows: [{ n: "1" }, { n: "2" }] }, [
+  { source: "rows.n", target: "items.$.value", cast: "number" },
+]);
+// { items: [{ value: 1 }, { value: 2 }] }
+
+// 5. Combine fields
+map({ street: "Main St 1", city: "Lisbon" }, [
+  {
+    sources: ["street", "city"],
+    target: "address",
+    transform: (parts) => parts.join(", "),
+  },
+]);
+// { address: "Main St 1, Lisbon" }
+```
+
+For **config-driven mapping** — definitions stored as JSON, validated before
+deploy, executed with a named registry — see
+[`examples/config-file/`](./examples/config-file).
 
 ## Migrating from v1
 

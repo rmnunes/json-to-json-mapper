@@ -1,0 +1,14 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "docs-dist",
+  "name": "json-to-json-mapper",
+  "includeVersion": true,
+  "readme": "readme.md",
+  "excludeInternal": true,
+  "excludePrivate": true,
+  "navigationLinks": {
+    "GitHub": "https://github.com/rmnunes/json-to-json-mapper",
+    "npm": "https://www.npmjs.com/package/json-to-json-mapper"
+  }
+}

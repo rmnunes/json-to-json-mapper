@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extract, setValue, leafPaths } from "../src/paths.js";
+import { extract, setValue, leafPaths, parsePath } from "../src/paths.js";
 
 test("extract reads a nested scalar with no array indices", () => {
   assert.deepEqual(extract({ a: { b: 1 } }, ["a", "b"]), [{ value: 1, path: [] }]);
@@ -47,4 +47,35 @@ test("leafPaths collapses array indices and de-duplicates", () => {
     leafPaths({ order: [{ id: 1 }, { id: 2 }], name: "x" }),
     ["order.id", "name"]
   );
+});
+
+test("M1: parsePath splits dotted strings and honors escapes", () => {
+  assert.deepEqual(parsePath("a.b.c"), ["a", "b", "c"]);
+  assert.deepEqual(parsePath("a\\.b.c"), ["a.b", "c"]);
+  assert.deepEqual(parsePath("a\\\\.b"), ["a\\", "b"]);
+  assert.deepEqual(parsePath(["a.b", "c"]), ["a.b", "c"]);
+});
+
+test("M1: parsePath rejects malformed paths with null", () => {
+  assert.equal(parsePath(""), null);
+  assert.equal(parsePath("a..b"), null);
+  assert.equal(parsePath(".a"), null);
+  assert.equal(parsePath("a."), null);
+  assert.equal(parsePath([]), null);
+  assert.equal(parsePath(["a", ""]), null);
+  assert.equal(parsePath(123 as never), null);
+});
+
+test("M1: setValue numeric segments create and index arrays", () => {
+  const root: Record<string, unknown> = {};
+  setValue(root, ["coords", "0"], 4.9, []);
+  setValue(root, ["coords", "1"], 52.4, []);
+  assert.deepEqual(root, { coords: [4.9, 52.4] });
+  assert.ok(Array.isArray(root.coords));
+});
+
+test("M1: setValue numeric segment after $ nests arrays", () => {
+  const root: Record<string, unknown> = {};
+  setValue(root, ["rows", "$", "0"], "cell", [1]);
+  assert.deepEqual(JSON.parse(JSON.stringify(root)), { rows: [null, ["cell"]] });
 });

@@ -3,6 +3,108 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [2.5.0]
+
+Roadmap M4 — documentation & adoption.
+
+### Added
+
+- **Doc-tests**: every fenced `ts`/`js` block in the README is executed
+  against the built dist in CI and before publishing
+  (`scripts/check-readme.js`) — the README can no longer drift from the
+  code.
+- **README overhaul**: positioning table vs. alternatives, downloads and
+  zero-deps badges, and a five-recipe cookbook (rename, flatten,
+  enum-decode, array reshape, combine) — all executed in CI.
+- **`examples/`**: three runnable, CI-checked programs — API-response
+  reshaping, DB-row → DTO with lookups and `compile`, and config-driven
+  mapping loaded from JSON and validated with `validateMappings`
+  (`scripts/check-examples.js`).
+- **Docs site workflow** (`docs.yml`): typedoc API reference published to
+  GitHub Pages on release (requires a maintainer to enable Pages →
+  Source: GitHub Actions).
+
+## [2.4.0]
+
+Roadmap M3 — performance & hardening.
+
+### Added
+
+- **`compile(mappings, options?)`**: returns a reusable
+  `(input, { into? }) => MapResult`. Paths are parsed and registry
+  references resolved once; ~3.2× `map()` throughput on the 50-mappings
+  benchmark (target was ≥3×). `map()` is now implemented as
+  `compile(mappings, options)(input)`. New types `CompiledMapper`,
+  `CompileOptions`.
+- **Property-based tests & parser fuzzing** (fast-check, devDependency):
+  no-throw and no-pollution invariants over arbitrary JSON and arbitrary
+  unicode paths, identity round-trips, `compactArrays` idempotence, and
+  `map`/`compile` equivalence.
+- **Benchmark regression gate**: `pnpm run bench:check` compares against
+  the committed `bench/baseline.json` (>25% regression fails; tolerance via
+  `BENCH_TOLERANCE`) and enforces the machine-independent compile/map ≥2.5×
+  ratio. Wired into CI on Node 22.
+
+### Changed
+
+- `extract` uses index-based recursion (no per-level array spreads) —
+  faster for both `map` and `compile`.
+- Statically invalid mapping definitions (unknown registry references,
+  bad cast names, malformed paths) are now reported once per call even when
+  the source is absent, instead of only when a value happened to flow
+  through them.
+
+## [2.3.0]
+
+Roadmap M2 — config-first: mappings as data.
+
+### Added
+
+- **Named registry**: `map(input, mappings, { registry })` — `transform` and
+  `lookup` accept string references resolved against the registry, with
+  built-ins `trim`, `upper`, `lower`, `toISODate` always available (a
+  registry can shadow them). Mapping definitions can now be pure JSON.
+- **`validateMappings(mappings, { registry? })`**: static validation
+  returning structured issues (`{ index, code, field?, message }`) for
+  unknown keys, `source`/`sources` conflicts, malformed paths, unsafe target
+  segments, unknown registry references, and bad casts. Zero issues ⇒ safe
+  to persist.
+- **Stable error codes**: every `MappingError` now carries `code` —
+  `SOURCE_MISSING`, `CAST_FAILED`, `LOOKUP_MISS`, `TARGET_CONFLICT`,
+  `UNSAFE_TARGET`, `TRANSFORM_FAILED`, `INVALID_MAPPING`. Documented in the
+  README; never renamed within a major.
+- **JSON Schema** for serialized mapping definitions shipped at
+  `schema/mapping.schema.json` (draft 2020-12), kept in agreement with
+  `validateMappings` by tests.
+- New exports: `validateMappings`, `BUILTIN_TRANSFORMS`, `resolveTransform`,
+  `resolveLookup`, and types `Registry`, `TransformFn`, `LookupTable`,
+  `MappingErrorCode`, `ValidationIssue`, `ValidationCode`.
+
+## [2.2.0]
+
+Roadmap M1 — path language completeness.
+
+### Added
+
+- **Array-form paths**: `source`/`target` (and each entry of `sources`)
+  accept `string[]` as well as dotted strings, so keys containing dots are
+  addressable. `\.` escapes a literal dot in string form (`\\` escapes a
+  backslash). Malformed paths (empty path/segment) are reported in `errors`.
+- **Multi-source mappings**: `sources: Path[]` collects values positionally
+  and passes them to the (required) `transform`. Missing sources contribute
+  `undefined`; `strict` errors only when all are missing and no `default`.
+- **Conditional mappings**: `when(value, input)` — falsy skips the mapping
+  silently (never an error, even in strict mode). Called per matched value
+  for `source`, once with the values array for `sources`. Filters per
+  element over array fan-outs.
+- **Numeric target segments** write explicit array positions
+  (`target: "coords.0"`); containers created on demand become arrays when
+  the next segment is numeric or `$`. On pre-existing plain objects the
+  segment falls back to an ordinary key.
+- **Benchmark harness**: `pnpm run bench` (zero-dep) with committed baseline
+  in `bench/RESULTS.md`.
+- New exports: `parsePath`, `pathLabel`, and the `Path` type.
+
 ## [2.1.0]
 
 ### Added

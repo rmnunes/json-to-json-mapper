@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmnunes/json-to-json-mapper/blob/main/schema/mapping.schema.json",
+  "title": "json-to-json-mapper mapping definitions",
+  "description": "Array of serialized mapping rules for json-to-json-mapper's map(). Serialized (stored) mappings reference transforms and lookups by registry name; function-valued fields (transform functions, when predicates) exist only in code and are not representable here.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/mapping" },
+  "$defs": {
+    "path": {
+      "description": "Dot-notation string (\\. escapes a literal dot) or array of raw segments.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      ]
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target"],
+      "oneOf": [{ "required": ["source"] }, { "required": ["sources"] }],
+      "properties": {
+        "source": { "$ref": "#/$defs/path" },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/path" },
+          "minItems": 1
+        },
+        "target": { "$ref": "#/$defs/path" },
+        "cast": { "enum": ["string", "number", "boolean"] },
+        "lookup": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "object" }
+          ]
+        },
+        "transform": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of a registry or built-in transform (functions are not serializable)."
+        },
+        "default": {},
+        "first": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["sources"] },
+          "then": { "required": ["transform"], "not": { "required": ["lookup"] } }
+        }
+      ]
+    }
+  }
+}
