@@ -28,7 +28,7 @@
     "clean": "node -e \"const fs=require('fs');for(const d of ['dist','.test-build']) fs.rmSync(d,{recursive:true,force:true})\"",
     "typecheck": "tsc -p tsconfig.json",
     "pretest": "tsc -p tsconfig.test.json",
-    "test": "node --test \".test-build/tests/**/*.test.js\"",
+    "test": "node --test .test-build/tests/map.test.js .test-build/tests/paths.test.js .test-build/tests/security.test.js",
     "prepublishOnly": "pnpm run clean && pnpm run build"
   },
   "keywords": [
