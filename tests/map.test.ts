@@ -280,6 +280,199 @@ test("compactArrays: true removes holes but keeps assigned nulls", () => {
   assert.deepEqual(withNull.result, { out: [{ id: null }, { id: "2" }] });
 });
 
+test("M1: array-form source path addresses keys containing dots", () => {
+  const { result, errors } = map(
+    { "a.b": { c: 1 } },
+    [{ source: ["a.b", "c"], target: "out" }]
+  );
+  assert.deepEqual(result, { out: 1 });
+  assert.equal(errors.length, 0);
+});
+
+test("M1: escaped dots in string paths address keys containing dots", () => {
+  const { result } = map(
+    { "a.b": { c: 2 } },
+    [{ source: "a\\.b.c", target: "out" }]
+  );
+  assert.deepEqual(result, { out: 2 });
+});
+
+test("M1: array-form and string form are equivalent for plain paths", () => {
+  const input = { request: { order: { id: "1" } } };
+  const viaString = map(input, [{ source: "request.order.id", target: "x.y" }]);
+  const viaArray = map(input, [{ source: ["request", "order", "id"], target: ["x", "y"] }]);
+  assert.deepEqual(viaArray.result, viaString.result);
+});
+
+test("M1: array-form target with dotted key writes the literal key", () => {
+  const { result } = map({ v: 1 }, [{ source: "v", target: ["odd.key", "value"] }]);
+  assert.deepEqual(result, { "odd.key": { value: 1 } });
+});
+
+test("M1: malformed paths are reported, not thrown", () => {
+  const { errors } = map({ a: 1 }, [
+    { source: "", target: "x" },
+    { source: "a", target: "x..y" },
+    { source: ["a", ""], target: "z" },
+  ]);
+  assert.equal(errors.length, 3);
+  for (const error of errors) assert.match(error.message, /[Mm]alformed/);
+});
+
+test("M1: multi-source mapping combines values positionally", () => {
+  const { result, errors } = map(
+    { first: "Ada", last: "Lovelace" },
+    [{
+      sources: ["first", "last"],
+      target: "fullName",
+      transform: (values: unknown[]) => values.join(" "),
+    }]
+  );
+  assert.deepEqual(result, { fullName: "Ada Lovelace" });
+  assert.equal(errors.length, 0);
+});
+
+test("M1: multi-source passes undefined for missing sources", () => {
+  const { result } = map(
+    { first: "Ada" },
+    [{
+      sources: ["first", "middle"],
+      target: "out",
+      transform: (values: unknown[]) => values.map((v) => v ?? "?").join("|"),
+    }]
+  );
+  assert.deepEqual(result, { out: "Ada|?" });
+});
+
+test("M1: multi-source with all sources missing uses default; strict errors without one", () => {
+  const mappingsWithDefault = [{
+    sources: ["x", "y"],
+    target: "out",
+    default: "none",
+    transform: (values: unknown[]) => values.join(","),
+  }];
+  const withDefault = map({}, mappingsWithDefault, { strict: true });
+  assert.deepEqual(withDefault.result, { out: "none" });
+  assert.equal(withDefault.errors.length, 0);
+
+  const withoutDefault = map({}, [{
+    sources: ["x", "y"],
+    target: "out",
+    transform: (values: unknown[]) => values.join(","),
+  }], { strict: true });
+  assert.deepEqual(withoutDefault.result, {});
+  assert.equal(withoutDefault.errors.length, 1);
+  assert.match(withoutDefault.errors[0].message, /resolved to no values/);
+});
+
+test("M1: sources without transform is a reported error", () => {
+  const { errors } = map({ a: 1 }, [
+    { sources: ["a"], target: "out" } as never,
+  ]);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /requires a 'transform'/);
+});
+
+test("M1: source and sources together is a reported error", () => {
+  const { errors } = map({ a: 1 }, [
+    { source: "a", sources: ["a"], target: "out", transform: (v: unknown) => v } as never,
+  ]);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /exactly one of 'source' or 'sources'/);
+});
+
+test("M1: when(false) skips silently, even in strict mode", () => {
+  const { result, errors } = map(
+    { amount: 0 },
+    [{ source: "amount", target: "out", when: (value) => Boolean(value) }],
+    { strict: true }
+  );
+  assert.deepEqual(result, {});
+  assert.equal(errors.length, 0);
+});
+
+test("M1: when(true) lets the mapping through; predicate sees raw value and input", () => {
+  const seen: unknown[] = [];
+  const { result } = map(
+    { amount: "5", vip: true },
+    [{
+      source: "amount",
+      target: "out",
+      cast: "number",
+      when: (value, input) => {
+        seen.push(value, (input as { vip: boolean }).vip);
+        return true;
+      },
+    }]
+  );
+  assert.deepEqual(result, { out: 5 });
+  assert.deepEqual(seen, ["5", true]); // raw pre-cast value + full input
+});
+
+test("M1: when filtering array fan-out keeps only matching elements", () => {
+  const { result } = map(
+    { items: [{ id: 1, ok: true }, { id: 2, ok: false }, { id: 3, ok: true }] },
+    [{
+      source: "items.id",
+      target: "kept.$.id",
+      when: () => true,
+    }]
+  );
+  assert.deepEqual(result, { kept: [{ id: 1 }, { id: 2 }, { id: 3 }] });
+
+  const filtered = map(
+    { items: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+    [{ source: "items.id", target: "kept.$.id", when: (value) => (value as number) % 2 === 1 }],
+    { compactArrays: true }
+  );
+  assert.deepEqual(filtered.result, { kept: [{ id: 1 }, { id: 3 }] });
+});
+
+test("M1: a throwing when predicate is a reported error, not a crash", () => {
+  const { errors, result } = map({ a: 1 }, [{
+    source: "a",
+    target: "out",
+    when: () => {
+      throw new Error("boom");
+    },
+  }]);
+  assert.deepEqual(result, {});
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /'when' threw: boom/);
+});
+
+test("M1: numeric target segments write explicit array positions", () => {
+  const { result, errors } = map(
+    { lon: 4.9, lat: 52.4 },
+    [
+      { source: "lon", target: "coords.0" },
+      { source: "lat", target: "coords.1" },
+    ]
+  );
+  assert.deepEqual(result, { coords: [4.9, 52.4] });
+  assert.equal(errors.length, 0);
+  assert.ok(Array.isArray((result as { coords: unknown }).coords));
+});
+
+test("M1: numeric target segment on a pre-existing object writes an object key", () => {
+  const into: Record<string, unknown> = { stats: { existing: true } };
+  const { result } = map({ v: 7 }, [{ source: "v", target: "stats.0" }], { into });
+  assert.deepEqual(result, { stats: { existing: true, "0": 7 } });
+});
+
+test("M1: multi-source respects when on the values array", () => {
+  const { result } = map(
+    { a: 1, b: 2 },
+    [{
+      sources: ["a", "b"],
+      target: "sum",
+      when: (values: unknown[]) => (values as number[]).every((v) => typeof v === "number"),
+      transform: (values: number[]) => values[0] + values[1],
+    }]
+  );
+  assert.deepEqual(result, { sum: 3 });
+});
+
 test("compactArrays preserves the into reference", () => {
   const base: Record<string, unknown> = {};
   const { result } = map(

@@ -24,7 +24,58 @@ export interface Extracted {
   path: number[];
 }
 
+/**
+ * A path into a JSON structure: either a dot-notation string
+ * (`"request.order.id"`, with `\.` escaping a literal dot) or an array of
+ * raw segments (`["a.b", "c"]`) for keys that contain dots. The array form
+ * is the canonical representation; the string form is sugar.
+ */
+export type Path = string | string[];
+
 const ARRAY_INDEX = /^(0|[1-9][0-9]*)$/;
+
+/**
+ * Normalize a {@link Path} to its segments, or return `null` when the path
+ * is malformed (empty path, empty segment, or a non-string segment).
+ *
+ * String parsing honors `\.` (literal dot) and `\\` (literal backslash);
+ * any other backslash is kept verbatim.
+ */
+export function parsePath(path: Path): string[] | null {
+  if (Array.isArray(path)) {
+    if (path.length === 0) return null;
+    for (const segment of path) {
+      if (typeof segment !== "string" || segment.length === 0) return null;
+    }
+    return [...path];
+  }
+  if (typeof path !== "string" || path.length === 0) return null;
+
+  const parts: string[] = [];
+  let current = "";
+  for (let i = 0; i < path.length; i++) {
+    const char = path[i];
+    if (char === "\\" && (path[i + 1] === "." || path[i + 1] === "\\")) {
+      current += path[i + 1];
+      i++;
+    } else if (char === ".") {
+      if (current.length === 0) return null;
+      parts.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current.length === 0) return null;
+  parts.push(current);
+  return parts;
+}
+
+/** Human-readable label for a path, used in error entries and `skipped`. */
+export function pathLabel(path: Path): string {
+  if (Array.isArray(path)) return path.join(".");
+  return typeof path === "string" ? path : String(path);
+}
 
 /**
  * Collect every value reachable at `parts` within `node`.
@@ -68,13 +119,21 @@ export function extract(node: unknown, parts: string[]): Extracted[] {
   return extract(node[head], rest);
 }
 
+/** Should the container created for `segment` be an array? */
+function segmentWantsArray(segment: string | undefined): boolean {
+  return segment === "$" || (segment !== undefined && ARRAY_INDEX.test(segment));
+}
+
 /**
  * Write `value` into `root` at the target `parts`.
  *
- * A `$` segment denotes an array level; the concrete index is taken from
- * `indices` in order (defaulting to 0). Intermediate containers are created
- * on demand — an object, unless the following segment is `$`, in which case
- * an array. Unsafe keys throw before any mutation happens.
+ * A `$` segment denotes an array level whose concrete index is taken from
+ * `indices` in order (defaulting to 0). A numeric segment (`coords.0`)
+ * addresses an explicit array position when the container is an array —
+ * containers created on demand become arrays whenever the *next* segment is
+ * `$` or numeric, otherwise objects. On a pre-existing plain object, a
+ * numeric segment falls back to being an ordinary key, so `into` targets
+ * keep their shape. Unsafe keys throw before any mutation happens.
  */
 export function setValue(
   root: Record<string, unknown> | unknown[],
@@ -98,7 +157,20 @@ export function setValue(
         node[index] = value;
       } else {
         if (!isObject(node[index]) && !Array.isArray(node[index])) {
-          node[index] = parts[i + 1] === "$" ? [] : {};
+          node[index] = segmentWantsArray(parts[i + 1]) ? [] : {};
+        }
+        node = node[index];
+      }
+      continue;
+    }
+
+    if (Array.isArray(node) && ARRAY_INDEX.test(key)) {
+      const index = Number(key);
+      if (isLast) {
+        node[index] = value;
+      } else {
+        if (!isObject(node[index]) && !Array.isArray(node[index])) {
+          node[index] = segmentWantsArray(parts[i + 1]) ? [] : {};
         }
         node = node[index];
       }
@@ -112,9 +184,8 @@ export function setValue(
     if (isLast) {
       node[key] = value;
     } else {
-      const nextIsArray = parts[i + 1] === "$";
       if (!isObject(node[key]) && !Array.isArray(node[key])) {
-        node[key] = nextIsArray ? [] : {};
+        node[key] = segmentWantsArray(parts[i + 1]) ? [] : {};
       }
       node = node[key];
     }

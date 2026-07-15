@@ -3,6 +3,31 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [2.2.0]
+
+Roadmap M1 — path language completeness.
+
+### Added
+
+- **Array-form paths**: `source`/`target` (and each entry of `sources`)
+  accept `string[]` as well as dotted strings, so keys containing dots are
+  addressable. `\.` escapes a literal dot in string form (`\\` escapes a
+  backslash). Malformed paths (empty path/segment) are reported in `errors`.
+- **Multi-source mappings**: `sources: Path[]` collects values positionally
+  and passes them to the (required) `transform`. Missing sources contribute
+  `undefined`; `strict` errors only when all are missing and no `default`.
+- **Conditional mappings**: `when(value, input)` — falsy skips the mapping
+  silently (never an error, even in strict mode). Called per matched value
+  for `source`, once with the values array for `sources`. Filters per
+  element over array fan-outs.
+- **Numeric target segments** write explicit array positions
+  (`target: "coords.0"`); containers created on demand become arrays when
+  the next segment is numeric or `$`. On pre-existing plain objects the
+  segment falls back to an ordinary key.
+- **Benchmark harness**: `pnpm run bench` (zero-dep) with committed baseline
+  in `bench/RESULTS.md`.
+- New exports: `parsePath`, `pathLabel`, and the `Path` type.
+
 ## [2.1.0]
 
 ### Added

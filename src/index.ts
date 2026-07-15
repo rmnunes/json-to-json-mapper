@@ -6,27 +6,57 @@
  * runtime dependencies.
  */
 
-import { compactArraysDeep, extract, leafPaths, setValue } from "./paths.js";
+import {
+  compactArraysDeep,
+  extract,
+  leafPaths,
+  parsePath,
+  pathLabel,
+  setValue,
+  type Path,
+} from "./paths.js";
 import { applyCast, applyLookup, type Cast } from "./transform.js";
 
 export type { Cast, CastName } from "./transform.js";
+export type { Path } from "./paths.js";
 
 /** A single source-to-target rule. */
 export interface Mapping {
-  /** Dot-path into the input, e.g. `request.order.id`. Arrays are traversed. */
-  source: string;
-  /** Dot-path into the output. Use `$` to denote an array level. */
-  target: string;
+  /**
+   * Path into the input, e.g. `request.order.id`. Arrays are traversed;
+   * a numeric segment picks one element. Use the array form
+   * (`["a.b", "c"]`) or `\.` escaping for keys that contain dots.
+   * Exactly one of `source` / `sources` must be present.
+   */
+  source?: Path;
+  /**
+   * Multiple input paths whose values are collected positionally into an
+   * array and passed to `transform` (which is required). Each source
+   * contributes its first matched value, or `undefined` when absent.
+   */
+  sources?: Path[];
+  /** Path into the output. `$` denotes an array level; numeric segments write explicit positions. */
+  target: Path;
   /** Coerce the value's type: `"string" | "number" | "boolean"` (or the matching constructor). */
   cast?: Cast;
-  /** Substitute the value via a lookup table or TypeScript enum. */
+  /** Substitute the value via a lookup table or TypeScript enum. Not supported with `sources`. */
   lookup?: Record<string | number, unknown>;
-  /** Arbitrary transform, applied last. */
-  transform?: (value: unknown) => unknown;
-  /** Value to use when the source resolves to nothing. */
+  /**
+   * Arbitrary transform, applied last. With `sources`, it receives the
+   * positional array of values and is required.
+   */
+  transform?: (value: any) => unknown;
+  /** Value to use when the source(s) resolve to nothing. */
   default?: unknown;
   /** Keep only the first matched value (for a scalar target fed by an array source). */
   first?: boolean;
+  /**
+   * Apply this mapping only when the predicate returns truthy. For `source`
+   * it is called per matched value (before cast/lookup/transform); for
+   * `sources` it is called once with the positional values array. A falsy
+   * return skips silently — never an error, even in strict mode.
+   */
+  when?: (value: any, input: unknown) => boolean;
 }
 
 /** A structured error for one mapping that could not be fully applied. */
@@ -75,6 +105,73 @@ function applyValueTransforms(mapping: Mapping, value: unknown): unknown {
   return next;
 }
 
+/** Label used for a mapping's source side in errors and `skipped`. */
+function sourceLabel(mapping: Mapping): string | undefined {
+  if (mapping.source !== undefined) return pathLabel(mapping.source);
+  if (Array.isArray(mapping.sources)) return mapping.sources.map(pathLabel).join(" + ");
+  return undefined;
+}
+
+function applyMultiSource(
+  input: unknown,
+  mapping: Mapping,
+  result: Record<string, unknown>,
+  errors: MappingError[],
+  strict: boolean,
+  targetParts: string[]
+): void {
+  const fail = (message: string): void => {
+    errors.push({ source: sourceLabel(mapping), target: pathLabel(mapping.target), message });
+  };
+
+  if (!Array.isArray(mapping.sources) || mapping.sources.length === 0) {
+    return fail("'sources' must be a non-empty array of paths");
+  }
+  if (typeof mapping.transform !== "function") {
+    return fail("'sources' requires a 'transform' function to combine the values");
+  }
+  if (mapping.lookup !== undefined) {
+    return fail("'lookup' is not supported with 'sources'; do the lookup inside 'transform'");
+  }
+
+  const values: unknown[] = [];
+  for (const path of mapping.sources) {
+    const parts = parsePath(path);
+    if (!parts) return fail(`Malformed source path '${pathLabel(path)}'`);
+    const found = extract(input, parts).filter((m) => m.value !== undefined);
+    values.push(found.length > 0 ? found[0].value : undefined);
+  }
+
+  let value: unknown;
+  if (values.every((v) => v === undefined)) {
+    if (!("default" in mapping)) {
+      if (strict) fail("All sources resolved to no values");
+      return;
+    }
+    value = mapping.default; // Default is final: transform expects the values array.
+  } else {
+    if (mapping.when) {
+      try {
+        if (!mapping.when(values, input)) return;
+      } catch (error) {
+        return fail(`'when' threw: ${errorMessage(error)}`);
+      }
+    }
+    try {
+      value = mapping.transform(values);
+    } catch (error) {
+      return fail(errorMessage(error));
+    }
+  }
+
+  try {
+    if (mapping.cast) value = applyCast(mapping.cast, value);
+    setValue(result, targetParts, value, []);
+  } catch (error) {
+    fail(errorMessage(error));
+  }
+}
+
 function applyMapping(
   input: unknown,
   mapping: Mapping,
@@ -82,17 +179,43 @@ function applyMapping(
   errors: MappingError[],
   strict: boolean
 ): void {
-  if (!mapping || typeof mapping.source !== "string" || typeof mapping.target !== "string") {
+  if (!mapping || typeof mapping !== "object") {
+    errors.push({ message: "Mapping must be an object" });
+    return;
+  }
+
+  const hasSource = mapping.source !== undefined;
+  const hasSources = mapping.sources !== undefined;
+  if (hasSource === hasSources) {
     errors.push({
-      source: mapping?.source,
-      target: mapping?.target,
-      message: "Mapping must have string 'source' and 'target'",
+      source: sourceLabel(mapping),
+      target: mapping.target !== undefined ? pathLabel(mapping.target) : undefined,
+      message: "Mapping must have exactly one of 'source' or 'sources'",
     });
     return;
   }
 
-  const sourceParts = mapping.source.split(".");
-  const targetParts = mapping.target.split(".");
+  const targetParts = mapping.target !== undefined ? parsePath(mapping.target) : null;
+  if (!targetParts) {
+    errors.push({
+      source: sourceLabel(mapping),
+      target: mapping.target !== undefined ? pathLabel(mapping.target) : undefined,
+      message: "Malformed or missing target path",
+    });
+    return;
+  }
+
+  if (hasSources) {
+    return applyMultiSource(input, mapping, result, errors, strict, targetParts);
+  }
+
+  const label = { source: sourceLabel(mapping), target: pathLabel(mapping.target) };
+  const sourceParts = parsePath(mapping.source as Path);
+  if (!sourceParts) {
+    errors.push({ ...label, message: `Malformed source path '${label.source}'` });
+    return;
+  }
+
   const arrayLevels = targetParts.filter((part) => part === "$").length;
 
   let matches = extract(input, sourceParts).filter((m) => m.value !== undefined);
@@ -102,14 +225,23 @@ function applyMapping(
       matches = [{ value: mapping.default, path: [] }];
     } else {
       if (strict) {
-        errors.push({
-          source: mapping.source,
-          target: mapping.target,
-          message: `Source '${mapping.source}' resolved to no values`,
-        });
+        errors.push({ ...label, message: `Source '${label.source}' resolved to no values` });
       }
       return; // Absent optional source: only an error in strict mode.
     }
+  }
+
+  if (mapping.when) {
+    const kept: typeof matches = [];
+    for (const match of matches) {
+      try {
+        if (mapping.when(match.value, input)) kept.push(match);
+      } catch (error) {
+        errors.push({ ...label, message: `'when' threw: ${errorMessage(error)}` });
+      }
+    }
+    matches = kept;
+    if (matches.length === 0) return; // Skipped by predicate: silent by design.
   }
 
   if (mapping.first) {
@@ -118,8 +250,7 @@ function applyMapping(
 
   if (arrayLevels === 0 && matches.length > 1) {
     errors.push({
-      source: mapping.source,
-      target: mapping.target,
+      ...label,
       message: `Source resolved to ${matches.length} values but target is scalar; use first:true or a '$' target`,
     });
     matches = matches.slice(0, 1);
@@ -130,19 +261,29 @@ function applyMapping(
     try {
       value = applyValueTransforms(mapping, match.value);
     } catch (error) {
-      errors.push({ source: mapping.source, target: mapping.target, message: errorMessage(error) });
+      errors.push({ ...label, message: errorMessage(error) });
       continue;
     }
     try {
       setValue(result, targetParts, value, match.path);
     } catch (error) {
-      errors.push({ source: mapping.source, target: mapping.target, message: errorMessage(error) });
+      errors.push({ ...label, message: errorMessage(error) });
     }
   }
 }
 
 function computeSkipped(input: unknown, mappings: Mapping[]): string[] {
-  const consumed = new Set(mappings.map((mapping) => mapping?.source).filter(Boolean));
+  const consumed = new Set<string>();
+  for (const mapping of mappings) {
+    if (!mapping || typeof mapping !== "object") continue;
+    const paths: Path[] = [];
+    if (mapping.source !== undefined) paths.push(mapping.source);
+    if (Array.isArray(mapping.sources)) paths.push(...mapping.sources);
+    for (const path of paths) {
+      const parts = parsePath(path);
+      if (parts) consumed.add(parts.join("."));
+    }
+  }
   return leafPaths(input).filter((path) => !consumed.has(path));
 }
 
@@ -190,6 +331,8 @@ export {
   compactArraysDeep,
   extract,
   leafPaths,
+  parsePath,
+  pathLabel,
   setValue,
   isUnsafeKey,
 } from "./paths.js";

@@ -54,15 +54,62 @@ not an array.)
 
 | Field       | Type                                   | Description                                                                 |
 | ----------- | -------------------------------------- | --------------------------------------------------------------------------- |
-| `source`    | `string` (required)                    | Dot-path into the input, e.g. `request.order.id`. Arrays are traversed.     |
-| `target`    | `string` (required)                    | Dot-path into the output. Use `$` to denote an array level.                 |
+| `source`    | `string \| string[]`                   | Path into the input, e.g. `request.order.id`. Arrays are traversed. Exactly one of `source`/`sources`. |
+| `sources`   | `(string \| string[])[]`               | Multiple input paths, collected positionally into an array for `transform` (required with `sources`). |
+| `target`    | `string \| string[]` (required)        | Path into the output. `$` denotes an array level; numeric segments write explicit positions. |
 | `cast`      | `"string" \| "number" \| "boolean"`    | Coerce the value's type. The `String`/`Number`/`Boolean` constructors work too. |
-| `lookup`    | `Record<string \| number, unknown>`    | Substitute the value via a table or a TypeScript `enum`.                    |
-| `transform` | `(value: unknown) => unknown`          | Arbitrary transform, applied last.                                          |
-| `default`   | `unknown`                              | Value to use when the source resolves to nothing.                           |
+| `lookup`    | `Record<string \| number, unknown>`    | Substitute the value via a table or a TypeScript `enum`. Not supported with `sources`. |
+| `transform` | `(value) => unknown`                   | Arbitrary transform, applied last. With `sources` it receives the values array. |
+| `default`   | `unknown`                              | Value to use when the source(s) resolve to nothing.                         |
 | `first`     | `boolean`                              | Keep only the first matched value (for a scalar target fed by an array).    |
+| `when`      | `(value, input) => boolean`            | Apply the mapping only when truthy. Called per matched value (raw, pre-transform); with `sources`, once with the values array. A falsy return skips silently, even in `strict` mode. |
 
-Order of application per value: **lookup → cast → transform**.
+Order of application per value: **lookup → cast → transform** (with `sources`:
+**transform → cast**).
+
+### Paths
+
+Paths are dot-notation strings — or arrays of raw segments when a key itself
+contains a dot. `\.` escapes a literal dot in string form:
+
+```ts
+map({ "a.b": { c: 1 } }, [{ source: ["a.b", "c"], target: "out" }]);
+// { out: 1 }
+map({ "a.b": { c: 1 } }, [{ source: "a\\.b.c", target: "out" }]);
+// { out: 1 } — same thing, escaped string form
+```
+
+The array form is the canonical representation; strings are sugar. Malformed
+paths (empty segments, empty paths) are reported in `errors`, never thrown.
+
+### Combining several fields (`sources`)
+
+```ts
+map({ first: "Ada", last: "Lovelace" }, [
+  {
+    sources: ["first", "last"],
+    target: "fullName",
+    transform: ([first, last]) => `${first} ${last}`,
+  },
+]);
+// { fullName: "Ada Lovelace" }
+```
+
+Each source contributes its first matched value (`undefined` when absent).
+`strict` reports an error only when *all* sources are missing and there is no
+`default`.
+
+### Conditional mappings (`when`)
+
+```ts
+map({ amount: 0 }, [
+  { source: "amount", target: "billed", when: (value) => Boolean(value) },
+]);
+// {} — skipped silently; never an error
+```
+
+Over an array fan-out, `when` filters per element — combine with
+`compactArrays` for a dense result.
 
 ### Casting
 
@@ -105,14 +152,25 @@ empty slot (serialized as `null`) — pass `{ compactArrays: true }` to get dens
 arrays instead. To fold an array source into a single scalar target, use
 `first: true`.
 
-A **numeric segment** picks one array element deliberately:
+A **numeric segment** in a source picks one array element deliberately; in a
+target it writes an explicit array position:
 
 ```ts
 map({ order: [{ id: "a" }, { id: "b" }] }, [
   { source: "order.1.id", target: "picked" },
 ]);
 // { picked: "b" }
+
+map({ lon: 4.9, lat: 52.4 }, [
+  { source: "lon", target: "coords.0" },
+  { source: "lat", target: "coords.1" },
+]);
+// { coords: [4.9, 52.4] }
 ```
+
+Caveat: a numeric target segment creates an *array* container. If you need a
+literal numeric object key (e.g. a year), write into a pre-existing object via
+`into` — numeric segments fall back to plain keys on existing objects.
 
 ### `skipped` and `errors`
 

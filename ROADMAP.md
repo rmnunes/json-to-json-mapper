@@ -65,7 +65,7 @@ minutes and validate in CI.
 
 The gaps every real-world user hits in week one.
 
-- [ ] **Array-form paths** — `source` and `target` accept `string[]` as well
+- [x] **Array-form paths** — `source` and `target` accept `string[]` as well
   as the dotted string, so keys that *contain* dots are addressable.
   - `map({ "a.b": { c: 1 } }, [{ source: ["a.b", "c"], target: "out" }])`
     → `{ out: 1 }`.
@@ -73,19 +73,19 @@ The gaps every real-world user hits in week one.
     source; in target, `$` and numeric segments keep their meaning so the
     two forms stay equivalent otherwise.
   - Dotted-string form remains 100% backward compatible.
-- [ ] **Escaped dots in string paths** — `"a\\.b.c"` addresses key `a.b`.
+- [x] **Escaped dots in string paths** — `"a\\.b.c"` addresses key `a.b`.
   Escaping is sugar that parses to the array form; document that array form
   is the canonical representation.
-- [ ] **Multi-source mappings** — `sources: string[]` (mutually exclusive
+- [x] **Multi-source mappings** — `sources: string[]` (mutually exclusive
   with `source`) collects values positionally and requires `transform`.
   - `{ sources: ["first", "last"], target: "fullName", transform: (vals) => vals.join(" ") }`.
   - Missing individual sources yield `undefined` in the array; `strict`
     reports only if *all* sources are missing and no `default` exists.
-- [ ] **Conditional mappings** — optional `when(value, input): boolean`;
+- [x] **Conditional mappings** — optional `when(value, input): boolean`;
   a falsy return skips the mapping (not an error, even in strict mode).
-- [ ] **Target array indices** — numeric segments in target paths write to
+- [x] **Target array indices** — numeric segments in target paths write to
   explicit positions: `target: "coords.0"` / `"coords.1"`.
-- [ ] **Bench harness (baseline)** — `pnpm run bench` (plain `node`, no dep,
+- [x] **Bench harness (baseline)** — `pnpm run bench` (plain `node`, no dep,
   or `tinybench` as devDep) covering: 1 mapping × 100k objects, 50 mappings
   × 1k objects, array fan-out 10k elements. Prints ops/sec; commits a
   `bench/RESULTS.md` baseline. Not a CI gate yet — the baseline is the

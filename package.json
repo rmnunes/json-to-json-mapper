@@ -1,6 +1,6 @@
 {
   "name": "json-to-json-mapper",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Remap JSON to JSON from a declarative list of source/target paths — with type casting, lookup tables, arrays, and zero runtime dependencies.",
   "type": "commonjs",
   "main": "./dist/cjs/index.js",
@@ -38,7 +38,8 @@
     "test": "node --test .test-build/tests/map.test.js .test-build/tests/paths.test.js .test-build/tests/security.test.js",
     "test:coverage": "pnpm run pretest && node --experimental-test-coverage --test .test-build/tests/map.test.js .test-build/tests/paths.test.js .test-build/tests/security.test.js",
     "check:dist": "node scripts/check-dist.js",
-    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm test && pnpm run check:dist"
+    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm test && pnpm run check:dist",
+    "bench": "node bench/run.js"
   },
   "keywords": [
     "json",
