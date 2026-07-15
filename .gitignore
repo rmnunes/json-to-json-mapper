@@ -1,3 +1,5 @@
 dist/
+.test-build/
 node_modules
+*.tsbuildinfo
 .dccache

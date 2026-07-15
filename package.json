@@ -1,30 +1,58 @@
 {
   "name": "json-to-json-mapper",
-  "version": "1.1.2",
-  "description": "Map Json to Json, using enum to cast object when converting id to string",
+  "version": "2.0.0",
+  "description": "Remap JSON to JSON from a declarative list of source/target paths — with type casting, lookup tables, arrays, and zero runtime dependencies.",
   "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "readme.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "build": "tsc --build",
-    "clean": "tsc --build --clean",
-    "test": "mocha -r ts-node/register ./tests/**/*.spec.ts"
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"const fs=require('fs');for(const d of ['dist','.test-build']) fs.rmSync(d,{recursive:true,force:true})\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "pretest": "tsc -p tsconfig.test.json",
+    "test": "node --test \".test-build/tests/**/*.test.js\"",
+    "prepublishOnly": "pnpm run clean && pnpm run build"
   },
+  "keywords": [
+    "json",
+    "mapper",
+    "mapping",
+    "transform",
+    "remap",
+    "object-mapping",
+    "dot-notation",
+    "zero-dependency"
+  ],
   "repository": {
-    "type": "github",
-    "url": "https://github.com/rmnunes/json-to-json-mapper"
+    "type": "git",
+    "url": "git+https://github.com/rmnunes/json-to-json-mapper.git"
   },
+  "bugs": {
+    "url": "https://github.com/rmnunes/json-to-json-mapper/issues"
+  },
+  "homepage": "https://github.com/rmnunes/json-to-json-mapper#readme",
   "author": "Rodrigo Nunes",
   "license": "MIT",
-  "main": "dist/index.js",
-  "files": [
-    "dist"
-  ],
   "devDependencies": {
-    "@types/chai": "^4.3.1",
-    "@types/mocha": "^9.1.1",
-    "@types/node": "^18.6.2",
-    "chai": "^4.3.6",
-    "mocha": "^10.0.0",
-    "ts-node": "3.3.0",
-    "typescript": "3.9.9"
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
   }
 }
