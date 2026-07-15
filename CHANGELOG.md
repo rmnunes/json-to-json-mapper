@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [2.1.0]
+
+### Added
+
+- **ESM support**: dual ESM + CommonJS builds with conditional `exports`;
+  `import` and `require` both work and get correctly-flavored type
+  declarations.
+- **Numeric source segments**: `order.1.id` picks a single array element
+  deliberately instead of fanning out over the whole array.
+- **`strict` option**: `map(input, mappings, { strict: true })` reports
+  mappings whose source resolves to nothing (and that have no `default`) in
+  `errors` instead of skipping silently.
+- **`compactArrays` option**: removes holes from arrays in the result for
+  callers that don't need position alignment; assigned `null`s are kept.
+- Coverage script (`pnpm run test:coverage`) using Node's built-in coverage,
+  and a dual-build smoke check (`pnpm run check:dist`) wired into CI and
+  `prepublishOnly`.
+- Contributor scaffolding: CONTRIBUTING.md, issue templates, Dependabot.
+
+### Changed
+
+- Publish workflow prepared for npm **trusted publishing** (OIDC) with
+  provenance, replacing the long-lived token.
+- Build output moved to `dist/cjs` and `dist/esm` (transparent to consumers —
+  entry points are resolved via `main`/`exports`).
+
 ## [2.0.0]
 
 A ground-up rewrite focused on correctness, safety, and honest docs.

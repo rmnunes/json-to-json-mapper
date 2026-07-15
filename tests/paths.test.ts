@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extract, setValue, leafPaths } from "../src/paths";
+import { extract, setValue, leafPaths } from "../src/paths.js";
 
 test("extract reads a nested scalar with no array indices", () => {
   assert.deepEqual(extract({ a: { b: 1 } }, ["a", "b"]), [{ value: 1, path: [] }]);

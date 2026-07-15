@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { map, type Mapping } from "../src/index";
+import { map, type Mapping } from "../src/index.js";
 
 test("maps a nested scalar", () => {
   const { result } = map(
@@ -214,4 +214,79 @@ test("throws a clear TypeError when mappings is not an array", () => {
     () => map({}, undefined as unknown as Mapping[]),
     /mappings must be an array/
   );
+});
+
+test("explicit numeric index in source picks one array element", () => {
+  const { result } = map(
+    { order: [{ id: "a" }, { id: "b" }, { id: "c" }] },
+    [{ source: "order.1.id", target: "picked" }]
+  );
+  assert.deepEqual(result, { picked: "b" });
+});
+
+test("explicit numeric index out of bounds resolves to nothing", () => {
+  const { result, errors } = map(
+    { order: [{ id: "a" }] },
+    [{ source: "order.9.id", target: "picked" }]
+  );
+  assert.deepEqual(result, {});
+  assert.equal(errors.length, 0);
+});
+
+test("numeric key on a plain object still works as a normal key", () => {
+  const { result } = map(
+    { codes: { "0": "zero" } },
+    [{ source: "codes.0", target: "out" }]
+  );
+  assert.deepEqual(result, { out: "zero" });
+});
+
+test("strict: true reports missing sources as errors", () => {
+  const { errors } = map(
+    { a: 1 },
+    [
+      { source: "a", target: "x.a" },
+      { source: "missing.path", target: "x.b" },
+    ],
+    { strict: true }
+  );
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /resolved to no values/);
+});
+
+test("strict: true is satisfied by a default", () => {
+  const { result, errors } = map(
+    {},
+    [{ source: "missing", target: "x", default: "fallback" }],
+    { strict: true }
+  );
+  assert.deepEqual(result, { x: "fallback" });
+  assert.equal(errors.length, 0);
+});
+
+test("compactArrays: true removes holes but keeps assigned nulls", () => {
+  const { result } = map(
+    { order: [{ id: "1" }, { nope: true }, { id: "3" }] },
+    [{ source: "order.id", target: "out.$.id", cast: "number" }],
+    { compactArrays: true }
+  );
+  assert.deepEqual(result, { out: [{ id: 1 }, { id: 3 }] });
+
+  const withNull = map(
+    { order: [{ id: null }, { id: "2" }] },
+    [{ source: "order.id", target: "out.$.id" }],
+    { compactArrays: true }
+  );
+  assert.deepEqual(withNull.result, { out: [{ id: null }, { id: "2" }] });
+});
+
+test("compactArrays preserves the into reference", () => {
+  const base: Record<string, unknown> = {};
+  const { result } = map(
+    { order: [{ id: "1" }, { nope: true }] },
+    [{ source: "order.id", target: "out.$.id" }],
+    { into: base, compactArrays: true }
+  );
+  assert.equal(result, base);
+  assert.deepEqual(base, { out: [{ id: "1" }] });
 });

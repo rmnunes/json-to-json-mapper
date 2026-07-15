@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { map, isUnsafeKey } from "../src/index";
+import { map, isUnsafeKey } from "../src/index.js";
 
 test("REGRESSION: __proto__ target does not pollute Object.prototype", () => {
   const { errors } = map(

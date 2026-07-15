@@ -24,14 +24,18 @@ export interface Extracted {
   path: number[];
 }
 
+const ARRAY_INDEX = /^(0|[1-9][0-9]*)$/;
+
 /**
  * Collect every value reachable at `parts` within `node`.
  *
  * Arrays encountered *in the middle* of the path are transparent: the
  * remaining path is applied to each element, and the element index is
- * recorded in `path`. An array reached at the *end* of the path is returned
- * as-is (copied verbatim). Missing keys yield no entry rather than throwing,
- * so optional and heterogeneous fields are handled gracefully.
+ * recorded in `path`. A numeric segment (e.g. `order.0.id`) instead picks
+ * that single element deliberately, without recording an index. An array
+ * reached at the *end* of the path is returned as-is (copied verbatim).
+ * Missing keys yield no entry rather than throwing, so optional and
+ * heterogeneous fields are handled gracefully.
  */
 export function extract(node: unknown, parts: string[]): Extracted[] {
   if (parts.length === 0) {
@@ -39,6 +43,11 @@ export function extract(node: unknown, parts: string[]): Extracted[] {
   }
 
   if (Array.isArray(node)) {
+    const [head, ...rest] = parts;
+    if (ARRAY_INDEX.test(head)) {
+      const index = Number(head);
+      return index < node.length ? extract(node[index], rest) : [];
+    }
     const out: Extracted[] = [];
     node.forEach((element, index) => {
       for (const found of extract(element, parts)) {
@@ -122,6 +131,28 @@ export function leafPaths(node: unknown): string[] {
   walkLeaves(node, "", out);
   const seen = new Set<string>();
   return out.filter((path) => (seen.has(path) ? false : seen.add(path)));
+}
+
+/**
+ * Recursively remove holes (never-assigned slots) from every array in
+ * `node`, in place for objects, returning dense arrays. Assigned `null`s
+ * are kept — only true holes (`!(i in array)`) are dropped.
+ */
+export function compactArraysDeep(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    const dense: unknown[] = [];
+    for (let i = 0; i < node.length; i++) {
+      if (i in node) dense.push(compactArraysDeep(node[i]));
+    }
+    return dense;
+  }
+  if (isObject(node)) {
+    for (const key of Object.keys(node)) {
+      node[key] = compactArraysDeep(node[key]);
+    }
+    return node;
+  }
+  return node;
 }
 
 function walkLeaves(node: unknown, prefix: string, out: string[]): void {

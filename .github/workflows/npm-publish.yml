@@ -1,3 +1,15 @@
+# Publishes to npm via OIDC trusted publishing — no long-lived token needed.
+#
+# One-time setup on npmjs.com (package settings → Publishing access →
+# Trusted Publisher):
+#   - Provider:  GitHub Actions
+#   - Repository: rmnunes/json-to-json-mapper
+#   - Workflow:  npm-publish.yml
+#
+# Once configured, npm mints short-lived credentials from the workflow's OIDC
+# token and attaches provenance automatically. The old `npm_token` secret can
+# be deleted.
+
 name: Publish package
 
 on:
@@ -9,18 +21,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      id-token: write # required for OIDC trusted publishing + provenance
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org/
           cache: "pnpm"
+      # Trusted publishing requires npm >= 11.5.1; update the bundled CLI.
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - run: pnpm test
-      - run: pnpm publish --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
+      - run: pnpm run typecheck
+      # npm publish runs prepublishOnly, which cleans, builds, tests, and
+      # smoke-checks both dist flavors before anything reaches the registry.
+      - run: npm publish
