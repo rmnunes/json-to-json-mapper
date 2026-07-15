@@ -1,6 +1,6 @@
 {
   "name": "json-to-json-mapper",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Remap JSON to JSON from a declarative list of source/target paths — with type casting, lookup tables, arrays, and zero runtime dependencies.",
   "type": "commonjs",
   "main": "./dist/cjs/index.js",
@@ -36,11 +36,12 @@
     "clean": "node -e \"const fs=require('fs');for(const d of ['dist','.test-build']) fs.rmSync(d,{recursive:true,force:true})\"",
     "typecheck": "tsc -p tsconfig.json",
     "pretest": "tsc -p tsconfig.test.json",
-    "test": "node --test .test-build/tests/map.test.js .test-build/tests/paths.test.js .test-build/tests/security.test.js .test-build/tests/config.test.js",
-    "test:coverage": "pnpm run pretest && node --experimental-test-coverage --test .test-build/tests/map.test.js .test-build/tests/paths.test.js .test-build/tests/security.test.js .test-build/tests/config.test.js",
+    "test": "node --test .test-build/tests/map.test.js .test-build/tests/paths.test.js .test-build/tests/security.test.js .test-build/tests/config.test.js .test-build/tests/property.test.js",
+    "test:coverage": "pnpm run pretest && node --experimental-test-coverage --test .test-build/tests/map.test.js .test-build/tests/paths.test.js .test-build/tests/security.test.js .test-build/tests/config.test.js .test-build/tests/property.test.js",
     "check:dist": "node scripts/check-dist.js",
     "prepublishOnly": "pnpm run clean && pnpm run build && pnpm test && pnpm run check:dist",
-    "bench": "node bench/run.js"
+    "bench": "node bench/run.js",
+    "bench:check": "node bench/check.js"
   },
   "keywords": [
     "json",
@@ -65,6 +66,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "ajv": "^8.20.0",
+    "fast-check": "^4.9.0",
     "typescript": "^5.5.0"
   }
 }

@@ -115,17 +115,17 @@ config file or database row, validatable in CI before deploy.
 
 ## M3 — Performance & hardening (v2.4.0)
 
-- [ ] **`compile(mappings, opts?)`** — returns a reusable
+- [x] **`compile(mappings, opts?)`** — returns a reusable
   `(input) => MapResult` with paths parsed once. `map()` becomes
   `compile()(input)` internally; benchmark target: ≥ 3× `map()` throughput
   on the 50-mappings × 1k-objects bench.
-- [ ] **Property-based tests** — `fast-check` as devDependency: round-trip
+- [x] **Property-based tests** — `fast-check` as devDependency: round-trip
   and no-throw invariants over arbitrary JSON, pollution attempts against
   arbitrary key names, `compactArrays` idempotence.
-- [ ] **Bench regression gate in CI** — bench job compares against
+- [x] **Bench regression gate in CI** — bench job compares against
   `bench/RESULTS.md` baseline; fails on >25% regression (generous to absorb
   runner noise).
-- [ ] **Fuzz the path parser** — arbitrary strings into source/target must
+- [x] **Fuzz the path parser** — arbitrary strings into source/target must
   never throw uncaught or write outside the result object.
 
 ## M4 — Documentation & adoption (v2.5.0)

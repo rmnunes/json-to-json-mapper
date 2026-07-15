@@ -1,0 +1,29 @@
+{
+  "node": "v22.22.2",
+  "results": [
+    {
+      "name": "map | simple: 2 mappings x 100k objects",
+      "opsPerSec": 387424
+    },
+    {
+      "name": "compile | simple: 2 mappings x 100k objects",
+      "opsPerSec": 976714
+    },
+    {
+      "name": "map | wide: 50 mappings x 1k objects",
+      "opsPerSec": 21930
+    },
+    {
+      "name": "compile | wide: 50 mappings x 1k objects",
+      "opsPerSec": 73183
+    },
+    {
+      "name": "map | fan-out: 2 mappings x 10k-element array",
+      "opsPerSec": 86
+    },
+    {
+      "name": "compile | fan-out: 2 mappings x 10k-element array",
+      "opsPerSec": 93
+    }
+  ]
+}

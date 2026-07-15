@@ -3,6 +3,36 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [2.4.0]
+
+Roadmap M3 — performance & hardening.
+
+### Added
+
+- **`compile(mappings, options?)`**: returns a reusable
+  `(input, { into? }) => MapResult`. Paths are parsed and registry
+  references resolved once; ~3.2× `map()` throughput on the 50-mappings
+  benchmark (target was ≥3×). `map()` is now implemented as
+  `compile(mappings, options)(input)`. New types `CompiledMapper`,
+  `CompileOptions`.
+- **Property-based tests & parser fuzzing** (fast-check, devDependency):
+  no-throw and no-pollution invariants over arbitrary JSON and arbitrary
+  unicode paths, identity round-trips, `compactArrays` idempotence, and
+  `map`/`compile` equivalence.
+- **Benchmark regression gate**: `pnpm run bench:check` compares against
+  the committed `bench/baseline.json` (>25% regression fails; tolerance via
+  `BENCH_TOLERANCE`) and enforces the machine-independent compile/map ≥2.5×
+  ratio. Wired into CI on Node 22.
+
+### Changed
+
+- `extract` uses index-based recursion (no per-level array spreads) —
+  faster for both `map` and `compile`.
+- Statically invalid mapping definitions (unknown registry references,
+  bad cast names, malformed paths) are now reported once per call even when
+  the source is absent, instead of only when a value happened to flow
+  through them.
+
 ## [2.3.0]
 
 Roadmap M2 — config-first: mappings as data.

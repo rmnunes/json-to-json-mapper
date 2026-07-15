@@ -30,3 +30,11 @@ jobs:
       - name: Coverage
         if: matrix.node-version == '22.x'
         run: pnpm run test:coverage
+      - name: Benchmark gate
+        if: matrix.node-version == '22.x'
+        # Absolute numbers vary by runner hardware, so CI loosens the
+        # per-scenario tolerance; the compile/map ratio check keeps full
+        # strength everywhere (it is machine-independent).
+        env:
+          BENCH_TOLERANCE: "0.5"
+        run: pnpm run bench:check

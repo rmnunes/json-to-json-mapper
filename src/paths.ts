@@ -91,34 +91,48 @@ export function pathLabel(path: Path): string {
  * heterogeneous fields are handled gracefully.
  */
 export function extract(node: unknown, parts: string[]): Extracted[] {
-  if (parts.length === 0) {
-    return [{ value: node, path: [] }];
+  const out: Extracted[] = [];
+  extractInto(node, parts, 0, [], out);
+  return out;
+}
+
+/** Index-based recursion: no per-level array slicing/spreading (hot path). */
+function extractInto(
+  node: unknown,
+  parts: string[],
+  offset: number,
+  indexTrail: number[],
+  out: Extracted[]
+): void {
+  if (offset === parts.length) {
+    out.push({ value: node, path: indexTrail.slice() });
+    return;
   }
 
   if (Array.isArray(node)) {
-    const [head, ...rest] = parts;
+    const head = parts[offset];
     if (ARRAY_INDEX.test(head)) {
       const index = Number(head);
-      return index < node.length ? extract(node[index], rest) : [];
+      if (index < node.length) extractInto(node[index], parts, offset + 1, indexTrail, out);
+      return;
     }
-    const out: Extracted[] = [];
-    node.forEach((element, index) => {
-      for (const found of extract(element, parts)) {
-        out.push({ value: found.value, path: [index, ...found.path] });
-      }
-    });
-    return out;
+    for (let index = 0; index < node.length; index++) {
+      indexTrail.push(index);
+      extractInto(node[index], parts, offset, indexTrail, out);
+      indexTrail.pop();
+    }
+    return;
   }
 
   if (!isObject(node)) {
-    return [];
+    return;
   }
 
-  const [head, ...rest] = parts;
+  const head = parts[offset];
   if (!Object.prototype.hasOwnProperty.call(node, head)) {
-    return [];
+    return;
   }
-  return extract(node[head], rest);
+  extractInto(node[head], parts, offset + 1, indexTrail, out);
 }
 
 /** Should the container created for `segment` be an array? */

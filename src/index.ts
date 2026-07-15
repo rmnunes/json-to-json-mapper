@@ -19,6 +19,7 @@ import {
 import {
   applyCast,
   applyLookup,
+  castName,
   resolveLookup,
   resolveTransform,
   type Cast,
@@ -123,143 +124,161 @@ function sourceLabel(mapping: Mapping): string | undefined {
   return undefined;
 }
 
-function applyValueTransforms(mapping: Mapping, value: unknown, registry?: Registry): unknown {
-  let next = value;
-  if (mapping.lookup !== undefined) next = applyLookup(resolveLookup(mapping.lookup, registry), next);
-  if (mapping.cast) next = applyCast(mapping.cast, next);
-  if (mapping.transform !== undefined) next = resolveTransform(mapping.transform, registry)(next);
-  return next;
+// ------------------------------------------------------------ compilation
+
+interface PreparedError {
+  kind: "error";
+  error: MappingError;
 }
 
-function applyMultiSource(
-  input: unknown,
-  mapping: Mapping,
-  result: Record<string, unknown>,
-  errors: MappingError[],
-  options: MapOptions,
-  targetParts: string[]
-): void {
-  const fail = (code: MappingErrorCode, message: string): void => {
-    errors.push({ code, source: sourceLabel(mapping), target: pathLabel(mapping.target), message });
-  };
-
-  if (!Array.isArray(mapping.sources) || mapping.sources.length === 0) {
-    return fail("INVALID_MAPPING", "'sources' must be a non-empty array of paths");
-  }
-  if (mapping.transform === undefined) {
-    return fail("INVALID_MAPPING", "'sources' requires a 'transform' function to combine the values");
-  }
-  if (mapping.lookup !== undefined) {
-    return fail("INVALID_MAPPING", "'lookup' is not supported with 'sources'; do the lookup inside 'transform'");
-  }
-
-  const values: unknown[] = [];
-  for (const path of mapping.sources) {
-    const parts = parsePath(path);
-    if (!parts) return fail("INVALID_MAPPING", `Malformed source path '${pathLabel(path)}'`);
-    const found = extract(input, parts).filter((m) => m.value !== undefined);
-    values.push(found.length > 0 ? found[0].value : undefined);
-  }
-
-  let value: unknown;
-  if (values.every((v) => v === undefined)) {
-    if (!("default" in mapping)) {
-      if (options.strict) fail("SOURCE_MISSING", "All sources resolved to no values");
-      return;
-    }
-    value = mapping.default; // Default is final: transform expects the values array.
-  } else {
-    if (mapping.when) {
-      try {
-        if (!mapping.when(values, input)) return;
-      } catch (error) {
-        return fail("TRANSFORM_FAILED", `'when' threw: ${errorMessage(error)}`);
-      }
-    }
-    try {
-      value = resolveTransform(mapping.transform, options.registry)(values);
-    } catch (error) {
-      return fail(codeOf(error, "TRANSFORM_FAILED"), errorMessage(error));
-    }
-  }
-
-  try {
-    if (mapping.cast) value = applyCast(mapping.cast, value);
-    setValue(result, targetParts, value, []);
-  } catch (error) {
-    fail(codeOf(error, "TARGET_CONFLICT"), errorMessage(error));
-  }
+interface PreparedBase {
+  label: { source?: string; target?: string };
+  targetParts: string[];
+  castTo?: ReturnType<typeof castName>;
+  transformFn?: TransformFn;
+  when?: (value: any, input: unknown) => boolean;
+  hasDefault: boolean;
+  defaultValue?: unknown;
 }
 
-function applyMapping(
-  input: unknown,
-  mapping: Mapping,
-  result: Record<string, unknown>,
-  errors: MappingError[],
-  options: MapOptions
-): void {
+interface PreparedSingle extends PreparedBase {
+  kind: "single";
+  sourceParts: string[];
+  arrayLevels: number;
+  lookupTable?: LookupTable;
+  first?: boolean;
+}
+
+interface PreparedMulti extends PreparedBase {
+  kind: "multi";
+  sourcesParts: string[][];
+  transformFn: TransformFn; // required for multi
+}
+
+type Prepared = PreparedError | PreparedSingle | PreparedMulti;
+
+/** Parse paths and resolve registry references once, up front. */
+function prepareMapping(mapping: Mapping, registry: Registry | undefined): Prepared {
+  const asError = (code: MappingErrorCode, message: string, label?: PreparedBase["label"]): PreparedError => ({
+    kind: "error",
+    error: { code, ...label, message },
+  });
+
   if (!mapping || typeof mapping !== "object") {
-    errors.push({ code: "INVALID_MAPPING", message: "Mapping must be an object" });
-    return;
+    return asError("INVALID_MAPPING", "Mapping must be an object");
   }
+
+  const label = {
+    source: sourceLabel(mapping),
+    target: mapping.target !== undefined ? pathLabel(mapping.target) : undefined,
+  };
 
   const hasSource = mapping.source !== undefined;
   const hasSources = mapping.sources !== undefined;
   if (hasSource === hasSources) {
-    errors.push({
-      code: "INVALID_MAPPING",
-      source: sourceLabel(mapping),
-      target: mapping.target !== undefined ? pathLabel(mapping.target) : undefined,
-      message: "Mapping must have exactly one of 'source' or 'sources'",
-    });
-    return;
+    return asError("INVALID_MAPPING", "Mapping must have exactly one of 'source' or 'sources'", label);
   }
 
   const targetParts = mapping.target !== undefined ? parsePath(mapping.target) : null;
   if (!targetParts) {
-    errors.push({
-      code: "INVALID_MAPPING",
-      source: sourceLabel(mapping),
-      target: mapping.target !== undefined ? pathLabel(mapping.target) : undefined,
-      message: "Malformed or missing target path",
-    });
-    return;
+    return asError("INVALID_MAPPING", "Malformed or missing target path", label);
   }
+
+  let castTo: PreparedBase["castTo"];
+  let transformFn: TransformFn | undefined;
+  try {
+    if (mapping.cast !== undefined) castTo = castName(mapping.cast);
+    if (mapping.transform !== undefined) transformFn = resolveTransform(mapping.transform, registry);
+  } catch (error) {
+    return asError(codeOf(error, "INVALID_MAPPING"), errorMessage(error), label);
+  }
+
+  const base: PreparedBase = {
+    label,
+    targetParts,
+    castTo,
+    transformFn,
+    when: mapping.when,
+    hasDefault: "default" in mapping,
+    defaultValue: mapping.default,
+  };
 
   if (hasSources) {
-    return applyMultiSource(input, mapping, result, errors, options, targetParts);
+    if (!Array.isArray(mapping.sources) || mapping.sources.length === 0) {
+      return asError("INVALID_MAPPING", "'sources' must be a non-empty array of paths", label);
+    }
+    if (transformFn === undefined) {
+      return asError("INVALID_MAPPING", "'sources' requires a 'transform' function to combine the values", label);
+    }
+    if (mapping.lookup !== undefined) {
+      return asError("INVALID_MAPPING", "'lookup' is not supported with 'sources'; do the lookup inside 'transform'", label);
+    }
+    const sourcesParts: string[][] = [];
+    for (const path of mapping.sources) {
+      const parts = parsePath(path);
+      if (!parts) return asError("INVALID_MAPPING", `Malformed source path '${pathLabel(path)}'`, label);
+      sourcesParts.push(parts);
+    }
+    return { ...base, kind: "multi", sourcesParts, transformFn };
   }
-
-  const label = { source: sourceLabel(mapping), target: pathLabel(mapping.target) };
-  const push = (code: MappingErrorCode, message: string): void => {
-    errors.push({ code, ...label, message });
-  };
 
   const sourceParts = parsePath(mapping.source as Path);
   if (!sourceParts) {
-    return push("INVALID_MAPPING", `Malformed source path '${label.source}'`);
+    return asError("INVALID_MAPPING", `Malformed source path '${label.source}'`, label);
   }
 
-  const arrayLevels = targetParts.filter((part) => part === "$").length;
+  let lookupTable: LookupTable | undefined;
+  try {
+    if (mapping.lookup !== undefined) lookupTable = resolveLookup(mapping.lookup, registry);
+  } catch (error) {
+    return asError(codeOf(error, "INVALID_MAPPING"), errorMessage(error), label);
+  }
 
-  let matches = extract(input, sourceParts).filter((m) => m.value !== undefined);
+  let arrayLevels = 0;
+  for (const part of targetParts) if (part === "$") arrayLevels++;
+
+  return {
+    ...base,
+    kind: "single",
+    sourceParts,
+    arrayLevels,
+    lookupTable,
+    first: mapping.first,
+  };
+}
+
+function runSingle(
+  prepared: PreparedSingle,
+  input: unknown,
+  result: Record<string, unknown>,
+  errors: MappingError[],
+  strict: boolean
+): void {
+  const push = (code: MappingErrorCode, message: string): void => {
+    errors.push({ code, ...prepared.label, message });
+  };
+
+  let matches = extract(input, prepared.sourceParts);
+  if (matches.length > 0) {
+    matches = matches.filter((m) => m.value !== undefined);
+  }
 
   if (matches.length === 0) {
-    if ("default" in mapping) {
-      matches = [{ value: mapping.default, path: [] }];
+    if (prepared.hasDefault) {
+      matches = [{ value: prepared.defaultValue, path: [] }];
     } else {
-      if (options.strict) {
-        push("SOURCE_MISSING", `Source '${label.source}' resolved to no values`);
+      if (strict) {
+        push("SOURCE_MISSING", `Source '${prepared.label.source}' resolved to no values`);
       }
       return; // Absent optional source: only an error in strict mode.
     }
   }
 
-  if (mapping.when) {
+  if (prepared.when) {
     const kept: typeof matches = [];
     for (const match of matches) {
       try {
-        if (mapping.when(match.value, input)) kept.push(match);
+        if (prepared.when(match.value, input)) kept.push(match);
       } catch (error) {
         push("TRANSFORM_FAILED", `'when' threw: ${errorMessage(error)}`);
       }
@@ -268,11 +287,11 @@ function applyMapping(
     if (matches.length === 0) return; // Skipped by predicate: silent by design.
   }
 
-  if (mapping.first) {
+  if (prepared.first) {
     matches = matches.slice(0, 1);
   }
 
-  if (arrayLevels === 0 && matches.length > 1) {
+  if (prepared.arrayLevels === 0 && matches.length > 1) {
     push(
       "TARGET_CONFLICT",
       `Source resolved to ${matches.length} values but target is scalar; use first:true or a '$' target`
@@ -281,22 +300,81 @@ function applyMapping(
   }
 
   for (const match of matches) {
-    let value: unknown;
+    let value = match.value;
     try {
-      value = applyValueTransforms(mapping, match.value, options.registry);
+      if (prepared.lookupTable !== undefined) value = applyLookup(prepared.lookupTable, value);
+      if (prepared.castTo !== undefined) value = applyCast(prepared.castTo, value);
+      if (prepared.transformFn !== undefined) value = prepared.transformFn(value);
     } catch (error) {
       push(codeOf(error, "TRANSFORM_FAILED"), errorMessage(error));
       continue;
     }
     try {
-      setValue(result, targetParts, value, match.path);
+      setValue(result, prepared.targetParts, value, match.path);
     } catch (error) {
       push(codeOf(error, "TARGET_CONFLICT"), errorMessage(error));
     }
   }
 }
 
-function computeSkipped(input: unknown, mappings: Mapping[]): string[] {
+function runMulti(
+  prepared: PreparedMulti,
+  input: unknown,
+  result: Record<string, unknown>,
+  errors: MappingError[],
+  strict: boolean
+): void {
+  const push = (code: MappingErrorCode, message: string): void => {
+    errors.push({ code, ...prepared.label, message });
+  };
+
+  const values: unknown[] = [];
+  let anyPresent = false;
+  for (const parts of prepared.sourcesParts) {
+    const found = extract(input, parts);
+    let value: unknown;
+    for (const candidate of found) {
+      if (candidate.value !== undefined) {
+        value = candidate.value;
+        anyPresent = true;
+        break;
+      }
+    }
+    values.push(value);
+  }
+
+  let value: unknown;
+  if (!anyPresent) {
+    if (!prepared.hasDefault) {
+      if (strict) push("SOURCE_MISSING", "All sources resolved to no values");
+      return;
+    }
+    value = prepared.defaultValue; // Default is final: transform expects the values array.
+  } else {
+    if (prepared.when) {
+      try {
+        if (!prepared.when(values, input)) return;
+      } catch (error) {
+        return push("TRANSFORM_FAILED", `'when' threw: ${errorMessage(error)}`);
+      }
+    }
+    try {
+      value = prepared.transformFn(values);
+    } catch (error) {
+      return push(codeOf(error, "TRANSFORM_FAILED"), errorMessage(error));
+    }
+  }
+
+  try {
+    if (prepared.castTo !== undefined) value = applyCast(prepared.castTo, value);
+    setValue(result, prepared.targetParts, value, []);
+  } catch (error) {
+    push(codeOf(error, "TARGET_CONFLICT"), errorMessage(error));
+  }
+}
+
+/** Paths consumed by the mappings, for the `skipped` report. */
+function consumedPaths(mappings: Mapping[]): Set<string> {
   const consumed = new Set<string>();
   for (const mapping of mappings) {
     if (!mapping || typeof mapping !== "object") continue;
@@ -308,7 +386,60 @@ function computeSkipped(input: unknown, mappings: Mapping[]): string[] {
       if (parts) consumed.add(parts.join("."));
     }
   }
-  return leafPaths(input).filter((path) => !consumed.has(path));
+  return consumed;
+}
+
+/** Options accepted by {@link compile} — everything in MapOptions except the per-call `into`. */
+export type CompileOptions = Omit<MapOptions, "into">;
+
+/** A reusable mapper produced by {@link compile}. */
+export type CompiledMapper<T = Record<string, unknown>> = (
+  input: unknown,
+  callOptions?: Pick<MapOptions, "into">
+) => MapResult<T>;
+
+/**
+ * Compile `mappings` once and get back a reusable mapper function. Paths
+ * are parsed and registry references resolved a single time, so calling
+ * the compiled mapper in a loop is significantly faster than calling
+ * {@link map} repeatedly with the same mappings.
+ *
+ * @example
+ * const toOrder = compile([{ source: "id", target: "order.id", cast: "number" }]);
+ * for (const row of rows) results.push(toOrder(row).result);
+ */
+export function compile<T = Record<string, unknown>>(
+  mappings: Mapping[],
+  options: CompileOptions = {}
+): CompiledMapper<T> {
+  if (!Array.isArray(mappings)) {
+    throw new TypeError("mappings must be an array of Mapping objects");
+  }
+
+  const prepared = mappings.map((mapping) => prepareMapping(mapping, options.registry));
+  const consumed = consumedPaths(mappings);
+  const strict = options.strict === true;
+
+  return (input: unknown, callOptions: Pick<MapOptions, "into"> = {}): MapResult<T> => {
+    const result = callOptions.into ?? {};
+    const errors: MappingError[] = [];
+
+    for (const p of prepared) {
+      if (p.kind === "error") errors.push({ ...p.error });
+      else if (p.kind === "single") runSingle(p, input, result, errors, strict);
+      else runMulti(p, input, result, errors, strict);
+    }
+
+    if (options.compactArrays) {
+      compactArraysDeep(result);
+    }
+
+    return {
+      result: result as T,
+      skipped: leafPaths(input).filter((path) => !consumed.has(path)),
+      errors,
+    };
+  };
 }
 
 /**
@@ -316,6 +447,7 @@ function computeSkipped(input: unknown, mappings: Mapping[]): string[] {
  *
  * Never throws for per-mapping problems — every failure is collected in the
  * returned `errors` array so a partial result is always available.
+ * For repeated use of the same mappings, {@link compile} once instead.
  *
  * @example
  * const { result } = map(
@@ -329,26 +461,7 @@ export function map<T = Record<string, unknown>>(
   mappings: Mapping[],
   options: MapOptions = {}
 ): MapResult<T> {
-  if (!Array.isArray(mappings)) {
-    throw new TypeError("mappings must be an array of Mapping objects");
-  }
-
-  const result = options.into ?? {};
-  const errors: MappingError[] = [];
-
-  for (const mapping of mappings) {
-    applyMapping(input, mapping, result, errors, options);
-  }
-
-  if (options.compactArrays) {
-    compactArraysDeep(result);
-  }
-
-  return {
-    result: result as T,
-    skipped: computeSkipped(input, mappings),
-    errors,
-  };
+  return compile<T>(mappings, options)(input, { into: options.into });
 }
 
 export {
