@@ -141,6 +141,45 @@ test("M2: validateMappings accepts registry references it can resolve", () => {
   assert.ok(validateMappings(mappings).length > 0); // without the registry they are unknown
 });
 
+test("M2: validateMappings covers every field-type check", () => {
+  const issues = validateMappings([
+    { source: "a", target: "out", transform: 42 as never }, // transform wrong type
+    { source: "a", target: "out", lookup: ["array"] as never }, // lookup wrong type
+    { source: "a", target: "out", lookup: null as never }, // lookup null
+    { source: "a", target: "out", when: "not a fn" as never }, // when wrong type
+    { source: "a", target: "out", first: "yes" as never }, // first wrong type
+    { source: "a" } as never, // missing target
+    { sources: "not-an-array" as never, target: "out" }, // sources wrong type
+    { sources: ["a", "b..c"], target: "out", transform: "trim" }, // malformed sources entry
+  ]);
+  const fields = issues.map((issue) => issue.field);
+  for (const expected of ["transform", "lookup", "when", "first", "target", "sources", "sources[1]"]) {
+    assert.ok(fields.includes(expected), `expected an issue on '${expected}', got ${JSON.stringify(fields)}`);
+  }
+  assert.ok(issues.every((issue) => issue.code === "INVALID_MAPPING"));
+});
+
+test("M2: multi-source 'when' throwing is a TRANSFORM_FAILED error", () => {
+  const { errors } = map({ a: 1 }, [{
+    sources: ["a"],
+    target: "out",
+    transform: (v: unknown[]) => v,
+    when: () => {
+      throw new Error("nope");
+    },
+  }]);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].code, "TRANSFORM_FAILED");
+});
+
+test("M3: compiled mapper accepts per-call into and stays reusable", () => {
+  const { compile } = require("../src/index.js") as typeof import("../src/index.js");
+  const mapper = compile([{ source: "v", target: "x" }]);
+  const first: Record<string, unknown> = { keep: true };
+  assert.deepEqual(mapper({ v: 1 }, { into: first }).result, { keep: true, x: 1 });
+  assert.deepEqual(mapper({ v: 2 }).result, { x: 2 }); // fresh object per call
+});
+
 test("M2: validateMappings on a non-array reports instead of throwing", () => {
   const issues = validateMappings("nope" as never);
   assert.equal(issues.length, 1);
