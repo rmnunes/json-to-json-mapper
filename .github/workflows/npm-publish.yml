@@ -4,17 +4,23 @@
 # Trusted Publisher):
 #   - Provider:  GitHub Actions
 #   - Repository: rmnunes/json-to-json-mapper
-#   - Workflow:  npm-publish.yml
+#   - Workflow:  npm-publish.yml   (filename only, no path prefix)
+#   - Environment: leave empty
 #
-# Once configured, npm mints short-lived credentials from the workflow's OIDC
-# token and attaches provenance automatically. The old `npm_token` secret can
-# be deleted.
+# IMPORTANT: do NOT add `registry-url` to setup-node or set NODE_AUTH_TOKEN
+# here. That writes an `_authToken=${NODE_AUTH_TOKEN}` line into .npmrc, and
+# a configured (even empty) token takes precedence over OIDC — npm then
+# publishes with empty credentials and the registry answers 404.
 
 name: Publish package
 
 on:
   release:
     types: [created]
+  # Manual fallback: release-triggered re-runs execute the workflow file as
+  # of the tag's commit, so fixes to this file only take effect for new
+  # releases — or via this manual trigger, which runs from the chosen branch.
+  workflow_dispatch:
 
 jobs:
   publish-npm:
@@ -28,10 +34,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org/
           cache: "pnpm"
       # Trusted publishing requires npm >= 11.5.1; update the bundled CLI.
       - run: npm install -g npm@latest
+      - name: Diagnostics
+        run: |
+          npm --version
+          echo "OIDC available: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+          npm config get registry
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       # npm publish runs prepublishOnly, which cleans, builds, tests, and
