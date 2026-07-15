@@ -1,18 +1,28 @@
 # Security Policy
 
-## Supported Versions
-
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+## Supported versions
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.3   | :white_check_mark: |
+| 2.x     | :white_check_mark: |
+| < 2.0   | :x:                |
 
-## Reporting a Vulnerability
+## Design notes
 
-Use this section to tell people how to report a vulnerability.
+`map()` is a pure function: it does not mutate its inputs and keeps no state
+between calls. Target paths are validated before any write, and the segments
+`__proto__`, `constructor`, and `prototype` are rejected so that a
+mapping definition (which may be derived from untrusted input) cannot pollute
+the JavaScript prototype chain.
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Even so, treat mapping definitions as code: `transform` functions run with the
+privileges of your process, and a `lookup`/`transform` you did not author should
+be reviewed like any other dependency.
+
+## Reporting a vulnerability
+
+Please report suspected vulnerabilities privately via GitHub Security Advisories
+("Report a vulnerability" on the repository's **Security** tab) rather than
+opening a public issue. Include a minimal reproduction and the affected version.
+You can expect an initial response within a few days; if a fix is warranted it
+will be released as a patch version and credited in the changelog.

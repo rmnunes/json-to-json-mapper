@@ -1,234 +1,166 @@
-import * as fs from "fs";
-import { checkSkippedFieldsFromSource } from "./support";
+/**
+ * json-to-json-mapper
+ *
+ * Remap one JSON shape into another from a declarative list of mappings.
+ * The public entry point is {@link map}; it is a pure function with no
+ * runtime dependencies.
+ */
 
-/*
-    Accepted Implementations:
-      - take 1
-      - object to array
-      - array to array
-      - cast of value
-      - transformation of id to string (e.g. id = 9, 9 is equal Brazil , return Brazil as string instead of code, or the oposite, string to code)
-      - generate unique Id for arrays
-*/
+import { extract, leafPaths, setValue } from "./paths";
+import { applyCast, applyLookup, type Cast } from "./transform";
 
-type Error = {
-  ref: String;
-  message: String;
-};
+export type { Cast, CastName } from "./transform";
 
-let globalErrors: Error[] = [];
+/** A single source-to-target rule. */
+export interface Mapping {
+  /** Dot-path into the input, e.g. `request.order.id`. Arrays are traversed. */
+  source: string;
+  /** Dot-path into the output. Use `$` to denote an array level. */
+  target: string;
+  /** Coerce the value's type: `"string" | "number" | "boolean"` (or the matching constructor). */
+  cast?: Cast;
+  /** Substitute the value via a lookup table or TypeScript enum. */
+  lookup?: Record<string | number, unknown>;
+  /** Arbitrary transform, applied last. */
+  transform?: (value: unknown) => unknown;
+  /** Value to use when the source resolves to nothing. */
+  default?: unknown;
+  /** Keep only the first matched value (for a scalar target fed by an array source). */
+  first?: boolean;
+}
 
-function resolveEnum(e, value) {
-  if (e[value] !== undefined) return e[value];
-  else {
-    throw `Failed to find match to Enum of value: ${value}`;
+/** A structured error for one mapping that could not be fully applied. */
+export interface MappingError {
+  source?: string;
+  target?: string;
+  message: string;
+}
+
+/** The outcome of a {@link map} call. */
+export interface MapResult<T = Record<string, unknown>> {
+  /** The remapped object. */
+  result: T;
+  /** Input leaf paths that no mapping consumed. */
+  skipped: string[];
+  /** Problems encountered while mapping (never thrown; always collected here). */
+  errors: MappingError[];
+}
+
+export interface MapOptions {
+  /** Merge the result into this object instead of a fresh one. */
+  into?: Record<string, unknown>;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function applyValueTransforms(mapping: Mapping, value: unknown): unknown {
+  let next = value;
+  if (mapping.lookup) next = applyLookup(mapping.lookup, next);
+  if (mapping.cast) next = applyCast(mapping.cast, next);
+  if (mapping.transform) next = mapping.transform(next);
+  return next;
+}
+
+function applyMapping(
+  input: unknown,
+  mapping: Mapping,
+  result: Record<string, unknown>,
+  errors: MappingError[]
+): void {
+  if (!mapping || typeof mapping.source !== "string" || typeof mapping.target !== "string") {
+    errors.push({
+      source: mapping?.source,
+      target: mapping?.target,
+      message: "Mapping must have string 'source' and 'target'",
+    });
+    return;
   }
-}
 
-function resolveCasting(e, value) {
-  var casted;
-  switch (e.name) {
-    case "Number":
-      casted = Number(value);
-      break;
-    case "String":
-      casted = String(value);
-    default:
-      value;
-  }
-  return casted;
-}
+  const sourceParts = mapping.source.split(".");
+  const targetParts = mapping.target.split(".");
+  const arrayLevels = targetParts.filter((part) => part === "$").length;
 
-function clearIndexCtl(ctl) {
-  ctl.index = [...ctl.index.filter((x) => x !== -1)];
-}
+  let matches = extract(input, sourceParts).filter((m) => m.value !== undefined);
 
-export function assignValue(target, key, value, index, isArray) {
-  if (isArray) {
-    //the key is array or last element is array
-    target.push(value);
-  } else if (index !== undefined) {
-    if (target[index] === undefined) {
-      target.splice(index, 0, { [key]: value });
-      if (JSON.stringify(value) === "{}" || JSON.stringify(value) === "[]") {
-        return target[index][key];
-      } else {
-        return target[index];
-      }
+  if (matches.length === 0) {
+    if ("default" in mapping) {
+      matches = [{ value: mapping.default, path: [] }];
     } else {
-      if (target[index][key] === undefined) {
-        Object.assign(target[index], { [key]: value });
-        return target[index][key];
-      } else {
-        return target[index][key];
-      }
-    }
-  } else if (
-    value === null ||
-    (value !== undefined &&
-      typeof value != "function" &&
-      typeof value != "symbol")
-  ) {
-    if (target[key] === undefined) Object.assign(target, { [key]: value });
-    return target[key];
-  } else {
-    throw `Value ${value} is not assignable.`;
-  }
-}
-
-function assignTarget(target, map, value, ctl) {
-  if (Array.isArray(target)) {
-    if (ctl.allowance <= 0) clearIndexCtl(ctl);
-    if (ctl.index.length > 0) {
-      const indexAux = ctl.index[0];
-      ctl.index.shift();
-      return assignValue(target, map, value, indexAux, false);
-    } else {
-      if (ctl.allowance > 0) --ctl.allowance;
-      return assignValue(target, map, value, 0, false);
-    }
-  } else {
-    return assignValue(target, map, value, undefined, false);
-  }
-}
-
-function buildJson(map, value, ctl) {
-  let target = resulted;
-  if (typeof map == "string") {
-    let parts = map.split(".");
-    if (parts.length == 2 && parts[1] == "$") {
-      return assignValue(target, map, value, undefined, true);
-    } else if (parts.length > 0) {
-      do {
-        let part = parts.shift();
-        let initialValue;
-        if (parts[0] == "$") {
-          initialValue = [];
-          parts.shift();
-        } else {
-          initialValue = {};
-        }
-        target = assignTarget(target, part, target[part] || initialValue, ctl);
-      } while (parts.length > 1);
-      target = assignTarget(target, parts[0], value, ctl);
-      parts.shift();
-    } else {
-      globalErrors.push({
-        ref: map,
-        message: `Map ${map} is empty or undefined`,
-      });
-      throw `Map ${map} is empty or undefined`;
+      return; // Absent optional source: nothing to write, not an error.
     }
   }
-}
 
-const indexCtl = { index: [], allowance: 0 };
-function interator(obj, srcMap, tgtMap, format, casting) {
-  if (typeof srcMap == "string")
-    return interator(obj, srcMap.split("."), tgtMap, format, casting);
-  else if (srcMap.length == 0) {
-    let value;
-    if (
-      obj === null ||
-      (obj !== undefined &&
-        typeof obj != "object" &&
-        typeof obj != "function" &&
-        typeof obj != "symbol")
-    ) {
-      value = obj;
-      if (format) {
-        value = resolveEnum(format, value);
-      }
-
-      if (casting) {
-        value = resolveCasting(casting, value);
-      }
-      //TODO: maybe implement a take: 1
-      // an option in case is an array and we don't want all (I think this should go to business logic)
-
-      indexCtl.allowance =
-        indexCtl.index.filter((x) => x !== -1).length -
-        tgtMap.split(".").filter((x: string) => x === "$").length;
-      buildJson(tgtMap, value, {
-        allowance: indexCtl.allowance,
-        index: [...indexCtl.index],
-      });
-    } else {
-      globalErrors.push({
-        ref: value,
-        message: `Value ${value} is not assignable.`,
-      });
-      throw `Value ${value} is not assignable.`;
-    }
-  } else if (Array.isArray(obj)) {
-    for (var item in obj) {
-      //TODO: create unique identifier ?
-      indexCtl.index.push(item);
-      if (typeof obj[item] == "object") {
-        interator(
-          obj[item][srcMap[0]],
-          srcMap.slice(1),
-          tgtMap,
-          format,
-          casting
-        );
-      } else {
-        console.warn(`is there an else? iterator for?`);
-      }
-      indexCtl.index.pop();
-    }
-  } else {
-    if (obj[srcMap[0]] !== undefined) {
-      if (indexCtl.index.find((x) => x !== -1)) {
-        indexCtl.index.push(-1);
-        interator(obj[srcMap[0]], srcMap.slice(1), tgtMap, format, casting);
-        indexCtl.index.pop();
-      } else {
-        interator(obj[srcMap[0]], srcMap.slice(1), tgtMap, format, casting);
-      }
-    } else {
-      console.warn(`Source Element: ${srcMap[0]} not found.`);
-      globalErrors.push({
-        ref: srcMap[0],
-        message: `Source Element: ${srcMap[0]} not found.`,
-      });
-    }
+  if (mapping.first) {
+    matches = matches.slice(0, 1);
   }
-}
 
-let resulted = {};
+  if (arrayLevels === 0 && matches.length > 1) {
+    errors.push({
+      source: mapping.source,
+      target: mapping.target,
+      message: `Source resolved to ${matches.length} values but target is scalar; use first:true or a '$' target`,
+    });
+    matches = matches.slice(0, 1);
+  }
 
-export function map(obj, mappings, saveToFile, initial) {
-  let result = {};
-  globalErrors = []
-  resulted = initial;
-
-  const skipped = checkSkippedFieldsFromSource(obj, mappings);
-
-  for (const map in mappings) {
+  for (const match of matches) {
+    let value: unknown;
     try {
-      indexCtl.allowance = 0;
-      indexCtl.index = [];
-      interator(
-        obj,
-        mappings[map].source,
-        mappings[map].target,
-        mappings[map].enum,
-        mappings[map].cast
-      );
-      Object.assign(result, resulted);
-      if (saveToFile) fs.writeFileSync("document.json", JSON.stringify(result));
+      value = applyValueTransforms(mapping, match.value);
     } catch (error) {
-      console.error(
-        `Mapping error: Source: ${mappings[map].source} Target: ${mappings[map].target}`
-      );
-      console.error(`Error message: ${error}`);
-      globalErrors.push({
-        ref: `Source: ${mappings[map].source} Target: ${mappings[map].target}`,
-        message: `Error message: ${error}`,
-      });
+      errors.push({ source: mapping.source, target: mapping.target, message: errorMessage(error) });
+      continue;
+    }
+    try {
+      setValue(result, targetParts, value, match.path);
+    } catch (error) {
+      errors.push({ source: mapping.source, target: mapping.target, message: errorMessage(error) });
     }
   }
-  const errors = globalErrors;
-  return { result, skipped, errors };
 }
+
+function computeSkipped(input: unknown, mappings: Mapping[]): string[] {
+  const consumed = new Set(mappings.map((mapping) => mapping?.source).filter(Boolean));
+  return leafPaths(input).filter((path) => !consumed.has(path));
+}
+
+/**
+ * Remap `input` into a new object according to `mappings`.
+ *
+ * Never throws for per-mapping problems — every failure is collected in the
+ * returned `errors` array so a partial result is always available.
+ *
+ * @example
+ * const { result } = map(
+ *   { request: { order: { id: "1" } } },
+ *   [{ source: "request.order.id", target: "app.ordering.number", cast: "number" }]
+ * );
+ * // result === { app: { ordering: { number: 1 } } }
+ */
+export function map<T = Record<string, unknown>>(
+  input: unknown,
+  mappings: Mapping[],
+  options: MapOptions = {}
+): MapResult<T> {
+  if (!Array.isArray(mappings)) {
+    throw new TypeError("mappings must be an array of Mapping objects");
+  }
+
+  const result = options.into ?? {};
+  const errors: MappingError[] = [];
+
+  for (const mapping of mappings) {
+    applyMapping(input, mapping, result, errors);
+  }
+
+  return {
+    result: result as T,
+    skipped: computeSkipped(input, mappings),
+    errors,
+  };
+}
+
+export { extract, leafPaths, setValue, isUnsafeKey } from "./paths";
+export { applyCast, applyLookup } from "./transform";
