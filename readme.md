@@ -17,6 +17,8 @@ array handling, and per-mapping error reporting.
 - **ESM and CommonJS** — dual builds selected automatically by `import` /
   `require`.
 
+Where this project is headed: see the [ROADMAP](./ROADMAP.md).
+
 ## Install
 
 ```bash
