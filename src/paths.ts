@@ -6,6 +6,8 @@
  * can be called any number of times, concurrently, without cross-talk.
  */
 
+import { CodedError } from "./errors.js";
+
 /** Keys that must never be written, to prevent prototype pollution. */
 const UNSAFE_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
@@ -150,7 +152,10 @@ export function setValue(
 
     if (key === "$") {
       if (!Array.isArray(node)) {
-        throw new Error(`Target segment '$' expects an array but found ${typeof node}`);
+        throw new CodedError(
+          "TARGET_CONFLICT",
+          `Target segment '$' expects an array but found ${typeof node}`
+        );
       }
       const index = indices[indexCursor++] ?? 0;
       if (isLast) {
@@ -178,7 +183,7 @@ export function setValue(
     }
 
     if (isUnsafeKey(key)) {
-      throw new Error(`Refusing to write unsafe target key '${key}'`);
+      throw new CodedError("UNSAFE_TARGET", `Refusing to write unsafe target key '${key}'`);
     }
 
     if (isLast) {

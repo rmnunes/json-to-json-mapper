@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [2.3.0]
+
+Roadmap M2 — config-first: mappings as data.
+
+### Added
+
+- **Named registry**: `map(input, mappings, { registry })` — `transform` and
+  `lookup` accept string references resolved against the registry, with
+  built-ins `trim`, `upper`, `lower`, `toISODate` always available (a
+  registry can shadow them). Mapping definitions can now be pure JSON.
+- **`validateMappings(mappings, { registry? })`**: static validation
+  returning structured issues (`{ index, code, field?, message }`) for
+  unknown keys, `source`/`sources` conflicts, malformed paths, unsafe target
+  segments, unknown registry references, and bad casts. Zero issues ⇒ safe
+  to persist.
+- **Stable error codes**: every `MappingError` now carries `code` —
+  `SOURCE_MISSING`, `CAST_FAILED`, `LOOKUP_MISS`, `TARGET_CONFLICT`,
+  `UNSAFE_TARGET`, `TRANSFORM_FAILED`, `INVALID_MAPPING`. Documented in the
+  README; never renamed within a major.
+- **JSON Schema** for serialized mapping definitions shipped at
+  `schema/mapping.schema.json` (draft 2020-12), kept in agreement with
+  `validateMappings` by tests.
+- New exports: `validateMappings`, `BUILTIN_TRANSFORMS`, `resolveTransform`,
+  `resolveLookup`, and types `Registry`, `TransformFn`, `LookupTable`,
+  `MappingErrorCode`, `ValidationIssue`, `ValidationCode`.
+
 ## [2.2.0]
 
 Roadmap M1 — path language completeness.

@@ -96,19 +96,19 @@ The gaps every real-world user hits in week one.
 The differentiating milestone: mappings as data, not code — usable from a
 config file or database row, validatable in CI before deploy.
 
-- [ ] **Named transforms/casts registry** — `map(input, mappings, { registry })`
+- [x] **Named transforms/casts registry** — `map(input, mappings, { registry })`
   where mapping keys accept string references: `transform: "trim"`,
   `lookup: "countryCodes"`. Built-in registry ships `trim`, `upper`,
   `lower`, `toISODate`. Function values keep working (registry is additive).
-- [ ] **`validateMappings(mappings, opts?)`** — returns structured issues
+- [x] **`validateMappings(mappings, opts?)`** — returns structured issues
   (not throws): unknown mapping keys, `source`+`sources` conflicts, unsafe
   target segments, unknown registry references, malformed paths. Zero
   issues ⇒ the mapping definition is safe to persist.
-- [ ] **Stable error codes** — every `MappingError` gains a `code`
+- [x] **Stable error codes** — every `MappingError` gains a `code`
   (`SOURCE_MISSING`, `CAST_FAILED`, `LOOKUP_MISS`, `TARGET_CONFLICT`,
   `UNSAFE_TARGET`, `TRANSFORM_FAILED`, `INVALID_MAPPING`). Codes are public
   API: documented in README, covered by tests, never renamed within a major.
-- [ ] **JSON Schema for mapping definitions** — published at
+- [x] **JSON Schema for mapping definitions** — published at
   `schema/mapping.schema.json` and shipped in the npm package, so editors
   and CI can validate stored mapping files. Kept in sync by a test that
   validates every README example against the schema.

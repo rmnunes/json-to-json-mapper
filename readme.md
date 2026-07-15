@@ -172,13 +172,59 @@ Caveat: a numeric target segment creates an *array* container. If you need a
 literal numeric object key (e.g. a year), write into a pre-existing object via
 `into` — numeric segments fall back to plain keys on existing objects.
 
+### Serializable mappings: the registry
+
+Reference transforms and lookup tables **by name** and your mapping
+definitions become pure JSON — storable in a config file or database row:
+
+```ts
+map(
+  { name: "  ada  ", country: "NL" },
+  [
+    { source: "name", target: "name", transform: "trim" },
+    { source: "country", target: "country", lookup: "countries" },
+  ],
+  { registry: { lookups: { countries: { NL: "Netherlands" } } } }
+);
+// { name: "ada", country: "Netherlands" }
+```
+
+Built-in transforms (always available): `trim`, `upper`, `lower`,
+`toISODate`. A registry adds to — and can shadow — the built-ins. Function
+values keep working; the registry is additive.
+
+### Validating stored mappings
+
+```ts
+import { validateMappings } from "json-to-json-mapper";
+
+const issues = validateMappings(mappingsFromConfig, { registry });
+// [] means safe to persist/deploy; otherwise:
+// [{ index: 2, code: "UNSAFE_TARGET", field: "target", message: "..." }]
+```
+
+`validateMappings` catches everything static: unknown keys (typos),
+`source`/`sources` conflicts, malformed paths, unsafe target segments,
+unknown registry references, and bad casts — before the mapping ever runs.
+A JSON Schema for stored definitions ships at `schema/mapping.schema.json`
+for editor autocomplete and CI validation.
+
 ### `skipped` and `errors`
 
 - `skipped` lists input leaf paths (in dot notation) that no mapping consumed —
   handy for spotting fields you forgot to map.
-- `errors` is an array of `{ source, target, message }` describing every mapping
-  that could not be fully applied (bad cast, lookup miss, unsafe target key,
-  malformed mapping).
+- `errors` is an array of `{ code, source, target, message }` describing every
+  mapping that could not be fully applied. Codes are stable public API:
+
+| Code | Meaning |
+|---|---|
+| `SOURCE_MISSING` | `strict` mode: source(s) resolved to nothing and no `default` |
+| `CAST_FAILED` | Value could not be coerced (e.g. `"abc"` → number) |
+| `LOOKUP_MISS` | No matching key in the lookup table |
+| `TARGET_CONFLICT` | Multiple values for a scalar target, or `$` shape mismatch |
+| `UNSAFE_TARGET` | Target path hit the prototype-pollution guard |
+| `TRANSFORM_FAILED` | A `transform`/`when` function threw |
+| `INVALID_MAPPING` | Malformed mapping definition (bad paths, missing fields, unknown references) |
 
 ### Map-level options
 
