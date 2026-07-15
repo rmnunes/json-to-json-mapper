@@ -14,6 +14,8 @@ array handling, and per-mapping error reporting.
 - **Safe by default** — target paths that would pollute the prototype chain
   (`__proto__`, `constructor`, `prototype`) are rejected.
 - **Typed** — ships with TypeScript declarations.
+- **ESM and CommonJS** — dual builds selected automatically by `import` /
+  `require`.
 
 ## Install
 
@@ -26,6 +28,7 @@ pnpm add json-to-json-mapper
 
 ```ts
 import { map } from "json-to-json-mapper";
+// or: const { map } = require("json-to-json-mapper");
 
 const input = {
   request: { order: { id: "1" } },
@@ -96,8 +99,18 @@ map({ request: { order: [{ id: "1" }, { id: "2" }] } }, [
 
 Source array positions are preserved, which keeps multiple field-mappings
 aligned to the same element. An element that contributes no fields becomes an
-empty slot (serialized as `null`). To fold an array source into a single scalar
-target, use `first: true`.
+empty slot (serialized as `null`) — pass `{ compactArrays: true }` to get dense
+arrays instead. To fold an array source into a single scalar target, use
+`first: true`.
+
+A **numeric segment** picks one array element deliberately:
+
+```ts
+map({ order: [{ id: "a" }, { id: "b" }] }, [
+  { source: "order.1.id", target: "picked" },
+]);
+// { picked: "b" }
+```
 
 ### `skipped` and `errors`
 
@@ -107,10 +120,14 @@ target, use `first: true`.
   that could not be fully applied (bad cast, lookup miss, unsafe target key,
   malformed mapping).
 
-### Merging into an existing object
+### Map-level options
 
 ```ts
-map(input, mappings, { into: existingObject });
+map(input, mappings, {
+  into: existingObject, // merge into this object instead of a fresh one
+  strict: true,         // missing sources (without a default) become errors
+  compactArrays: true,  // remove holes from arrays in the result
+});
 ```
 
 ## Migrating from v1

@@ -6,10 +6,10 @@
  * runtime dependencies.
  */
 
-import { extract, leafPaths, setValue } from "./paths";
-import { applyCast, applyLookup, type Cast } from "./transform";
+import { compactArraysDeep, extract, leafPaths, setValue } from "./paths.js";
+import { applyCast, applyLookup, type Cast } from "./transform.js";
 
-export type { Cast, CastName } from "./transform";
+export type { Cast, CastName } from "./transform.js";
 
 /** A single source-to-target rule. */
 export interface Mapping {
@@ -49,6 +49,18 @@ export interface MapResult<T = Record<string, unknown>> {
 export interface MapOptions {
   /** Merge the result into this object instead of a fresh one. */
   into?: Record<string, unknown>;
+  /**
+   * Report an error when a mapping's source resolves to nothing and no
+   * `default` is provided (instead of silently skipping it).
+   */
+  strict?: boolean;
+  /**
+   * Remove holes from arrays in the result. By default, source array
+   * positions are preserved (a skipped element leaves an empty slot) so
+   * multiple field-mappings stay aligned; enable this to get dense arrays
+   * once alignment no longer matters.
+   */
+  compactArrays?: boolean;
 }
 
 function errorMessage(error: unknown): string {
@@ -67,7 +79,8 @@ function applyMapping(
   input: unknown,
   mapping: Mapping,
   result: Record<string, unknown>,
-  errors: MappingError[]
+  errors: MappingError[],
+  strict: boolean
 ): void {
   if (!mapping || typeof mapping.source !== "string" || typeof mapping.target !== "string") {
     errors.push({
@@ -88,7 +101,14 @@ function applyMapping(
     if ("default" in mapping) {
       matches = [{ value: mapping.default, path: [] }];
     } else {
-      return; // Absent optional source: nothing to write, not an error.
+      if (strict) {
+        errors.push({
+          source: mapping.source,
+          target: mapping.target,
+          message: `Source '${mapping.source}' resolved to no values`,
+        });
+      }
+      return; // Absent optional source: only an error in strict mode.
     }
   }
 
@@ -152,7 +172,11 @@ export function map<T = Record<string, unknown>>(
   const errors: MappingError[] = [];
 
   for (const mapping of mappings) {
-    applyMapping(input, mapping, result, errors);
+    applyMapping(input, mapping, result, errors, options.strict === true);
+  }
+
+  if (options.compactArrays) {
+    compactArraysDeep(result);
   }
 
   return {
@@ -162,5 +186,11 @@ export function map<T = Record<string, unknown>>(
   };
 }
 
-export { extract, leafPaths, setValue, isUnsafeKey } from "./paths";
-export { applyCast, applyLookup } from "./transform";
+export {
+  compactArraysDeep,
+  extract,
+  leafPaths,
+  setValue,
+  isUnsafeKey,
+} from "./paths.js";
+export { applyCast, applyLookup } from "./transform.js";

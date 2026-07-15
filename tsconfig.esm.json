@@ -2,8 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "rootDir": "src",
-    "outDir": "dist/cjs",
+    "outDir": "dist/esm",
     "removeComments": false
   },
   "include": ["src/**/*"],

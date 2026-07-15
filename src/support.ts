@@ -5,4 +5,4 @@
  * removed in v2 because they leaked state across calls. Use `leafPaths` and the
  * pure `map` API instead.
  */
-export { leafPaths, extract, setValue, isUnsafeKey } from "./paths";
+export { leafPaths, extract, setValue, isUnsafeKey } from "./paths.js";
